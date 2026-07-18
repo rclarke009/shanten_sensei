@@ -1,0 +1,76 @@
+{
+  "note": "Synthetic but shape-faithful mjai-reviewer Mortal Entry. Player cut 5s; Mortal wanted 9p into ryanmen tenpai. Replace with a real --json export when you have one.",
+  "kyoku": {
+    "kyoku": 0,
+    "honba": 0,
+    "relative_scores": [25000, 25000, 25000, 25000]
+  },
+  "context": {
+    "turn": 8,
+    "riichi_opponents": 0,
+    "score_diff": "even"
+  },
+  "entry": {
+    "junme": 8,
+    "tiles_left": 52,
+    "last_actor": 0,
+    "tile": "7s",
+    "state": {
+      "tehai": [
+        "1m", "2m", "3m", "4m", "5m", "6m",
+        "1p", "2p", "3p", "9p",
+        "4s", "5s", "6s", "7s"
+      ],
+      "fuuros": []
+    },
+    "at_self_chi_pon": false,
+    "at_self_riichi": false,
+    "at_opponent_kakan": false,
+    "expected": {
+      "type": "dahai",
+      "actor": 0,
+      "pai": "9p",
+      "tsumogiri": false
+    },
+    "actual": {
+      "type": "dahai",
+      "actor": 0,
+      "pai": "5s",
+      "tsumogiri": false
+    },
+    "is_equal": false,
+    "details": [
+      {
+        "action": { "type": "dahai", "actor": 0, "pai": "9p", "tsumogiri": false },
+        "q_value": 0.42,
+        "prob": 0.38
+      },
+      {
+        "action": { "type": "dahai", "actor": 0, "pai": "4s", "tsumogiri": false },
+        "q_value": 0.21,
+        "prob": 0.18
+      },
+      {
+        "action": { "type": "dahai", "actor": 0, "pai": "7s", "tsumogiri": false },
+        "q_value": 0.19,
+        "prob": 0.16
+      },
+      {
+        "action": { "type": "dahai", "actor": 0, "pai": "5s", "tsumogiri": false },
+        "q_value": 0.11,
+        "prob": 0.09
+      }
+    ],
+    "shanten": 0,
+    "at_furiten": false,
+    "actual_index": 3,
+    "dora_indicators": ["4m"],
+    "player_discards": ["9m", "1s", "3s"],
+    "visible_discards": {
+      "1": ["9p", "2s", "E"],
+      "2": ["4p", "8m", "N"],
+      "3": ["7p", "2m", "W"]
+    },
+    "genbutsu": ["9p"]
+  }
+}
