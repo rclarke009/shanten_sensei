@@ -1,0 +1,144 @@
+# How to play live with Shanten Sensei
+
+Live coaching uses two sibling repos: this explainer library, and the [overlay fork](https://github.com/rclarke009/shanten-sensei-overlay) (Mahjong Copilot + **Why?**).
+
+**Practice / friend / vs-AI only — not for ranked.** Why? is disabled when ranked (段位戦) is detected.
+
+---
+
+## What you get in-game
+
+1. Mortal’s recommended action on the overlay (as with Copilot).
+2. A status strip (shanten, ukeire, menzen/tenpai, etc.).
+3. A **Why?** button — on demand — that asks Sensei to explain Mortal’s pick in 1–2 sentences.
+
+The LLM never invents a better discard; it only verbalizes Mortal + derived features.
+
+---
+
+## One-time setup
+
+Clone both repos as siblings (same parent folder):
+
+```text
+a_new_projects_folder/
+  shanten_sensei/              ← this repo
+  shanten-sensei-overlay/      ← Copilot fork with Why?
+```
+
+### 1. Install Sensei (this repo)
+
+```bash
+cd shanten_sensei
+uv venv .venv
+uv pip install -e ".[dev]" --python .venv/bin/python
+```
+
+Optional — for LLM explanations instead of the offline template:
+
+```bash
+# repo-root .env
+OPENAI_API_KEY=sk-...
+# or
+SENSEI_API_KEY=...
+```
+
+### 2. Install the overlay
+
+Python **3.11** recommended. On macOS use `python3.11` (there is often no bare `python`).
+
+```bash
+cd ../shanten-sensei-overlay
+python3.11 -m venv venv
+source venv/bin/activate          # Windows: venv\Scripts\activate
+python -m pip install -U pip
+pip install -r requirements.txt
+pip install -e ../shanten_sensei
+# Compat pins (torch 2.2 + mitmproxy 10.2):
+pip install 'numpy<2' 'httpx>=0.27,<0.28' 'httpcore>=1.0,<1.0.9' 'h11>=0.11,<0.15'
+PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium
+```
+
+### 3. Place a Mortal model
+
+The overlay’s **Local** model type expects an Akagi-compatible Mortal `.pth`.
+
+- Put the file under `shanten-sensei-overlay/models/` (e.g. `mortal.pth`), **or**
+- Symlink it, e.g. if you already have weights under Sensei’s `game_logs/mortal_model/`:
+
+```bash
+cd shanten-sensei-overlay/models
+ln -sf ../../shanten_sensei/game_logs/mortal_model/mortal_298k.pth mortal.pth
+```
+
+Confirm **Settings → Model** is `Local` and points at that file. How to obtain models: [Akagi](https://github.com/shinkuan/Akagi).
+
+---
+
+## Play a live practice game
+
+1. **Start the overlay**
+
+   ```bash
+   cd shanten-sensei-overlay
+   source venv/bin/activate
+   # export OPENAI_API_KEY=...   # if not using a .env that the process sees
+   python main.py
+   ```
+
+2. **Open Majsoul through the app**  
+   Click **Start Browser** in the toolbar. Use the Chromium window Copilot launches (MITM must see the game traffic). Do not play in a separate browser outside the proxy.
+
+3. **Turn on Overlay; leave Autoplay off**  
+   Overlay = on so recommendations / status show in-game. Autoplay stays off — Sensei is a coach, not a bot.
+
+4. **Join a safe mode**
+   - Friend room, or
+   - Practice / vs-AI  
+   Avoid ranked ladder. The UI shows a practice-only banner; **Why?** is disabled on ranked / unknown mode.
+
+5. **Play your turn**  
+   When it’s your discard (or call decision), Mortal’s recommendation appears on the HUD.
+
+6. **Press Why?**  
+   In the desktop GUI (and reflected on the overlay strip), press **Why?**. Sensei returns a short explanation pinned to Mortal’s action.  
+   - With an API key → LLM wording.  
+   - Without → offline template text (still grounded in Mortal + features).
+
+7. **Repeat as needed**  
+   Why? is on demand only (cost + attention). Same turn is cached if you press again.
+
+---
+
+## Quick troubleshooting
+
+| Symptom | Likely fix |
+|---------|------------|
+| No recommendations | Model not loaded — check Settings → Local `.pth`, restart after MITM/model changes |
+| Overlay blank | Overlay toggle on; play inside the app’s browser |
+| Why? greyed / “disabled” | You’re in ranked or mode is unknown — use friend / practice |
+| `shanten_sensei` import errors | Re-run `pip install -e ../shanten_sensei` inside the overlay venv |
+| Generic / template Why? text | Set `OPENAI_API_KEY` or `SENSEI_API_KEY` in the environment before `python main.py` |
+
+---
+
+## After the game (optional)
+
+You can still use Phase 1 post-game review on a log:
+
+```bash
+cd shanten_sensei
+uv run --python .venv/bin/python sensei serve path/to/review.json
+```
+
+See [`phase1-contract.md`](phase1-contract.md) for mjai-reviewer → report JSON.
+
+---
+
+## More detail
+
+| Doc | Audience |
+|-----|----------|
+| This file | Playing live |
+| [`phase2-kickoff.md`](phase2-kickoff.md) | Adapter contract, mode gate, two-repo layout |
+| [Overlay readme](https://github.com/rclarke009/shanten-sensei-overlay) | Upstream Copilot install notes + screenshots |

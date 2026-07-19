@@ -1,0 +1,96 @@
+{
+  "note": "Real game 2026071901gm-0009-7126-0c7cc61e, player seat 3, kyoku 1 honba 1, junme 7. Mortal wanted chi 5mr, player chose none at shanten 3.",
+  "kyoku": {
+    "kyoku": 1,
+    "honba": 1,
+    "relative_scores": [
+      5100,
+      21400,
+      28900,
+      44600
+    ],
+    "end_status": [
+      {
+        "type": "hora",
+        "actor": 1,
+        "target": 1,
+        "deltas": [
+          -2700,
+          9100,
+          -2700,
+          -2700
+        ],
+        "ura_markers": [
+          "7m"
+        ]
+      }
+    ]
+  },
+  "entry": {
+    "junme": 7,
+    "tiles_left": 40,
+    "last_actor": 2,
+    "tile": "5mr",
+    "state": {
+      "tehai": [
+        "4m",
+        "6m",
+        "2p",
+        "4p",
+        "6p",
+        "8p",
+        "2s",
+        "3s",
+        "6s",
+        "7s",
+        "W",
+        "W",
+        "C"
+      ],
+      "fuuros": []
+    },
+    "at_self_chi_pon": false,
+    "at_self_riichi": false,
+    "at_opponent_kakan": false,
+    "expected": {
+      "type": "chi",
+      "actor": 3,
+      "target": 2,
+      "pai": "5mr",
+      "consumed": [
+        "4m",
+        "6m"
+      ]
+    },
+    "actual": {
+      "type": "none"
+    },
+    "is_equal": false,
+    "details": [
+      {
+        "action": {
+          "type": "chi",
+          "actor": 3,
+          "target": 2,
+          "pai": "5mr",
+          "consumed": [
+            "4m",
+            "6m"
+          ]
+        },
+        "q_value": -0.04368806,
+        "prob": 0.8916421
+      },
+      {
+        "action": {
+          "type": "none"
+        },
+        "q_value": -0.25445056,
+        "prob": 0.10835791
+      }
+    ],
+    "shanten": 3,
+    "at_furiten": false,
+    "actual_index": 1
+  }
+}

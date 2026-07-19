@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Shanten Sensei — Review</title>
+  <style>
+    :root {
+      --bg: #1a1f24;
+      --panel: #242b33;
+      --line: #3a4550;
+      --text: #e8eef4;
+      --muted: #9aabba;
+      --accent: #6eb5ff;
+      --warn: #e8b86d;
+      --danger: #e07a7a;
+      --ok: #7dcea0;
+      --mono: "IBM Plex Mono", "SF Mono", Menlo, Consolas, monospace;
+      --sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+    header {
+      padding: 1.25rem 1.5rem 1rem;
+      border-bottom: 1px solid var(--line);
+    }
+    header h1 {
+      margin: 0;
+      font-size: 1.15rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    header .meta {
+      margin-top: 0.35rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    header .notice {
+      margin-top: 0.5rem;
+      color: var(--warn);
+      font-size: 0.8rem;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(240px, 340px) 1fr;
+      min-height: calc(100vh - 5.5rem);
+    }
+    @media (max-width: 720px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+    .list {
+      border-right: 1px solid var(--line);
+      overflow-y: auto;
+      max-height: calc(100vh - 5.5rem);
+    }
+    .row {
+      display: block;
+      width: 100%;
+      text-align: left;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      background: transparent;
+      color: var(--text);
+      padding: 0.85rem 1rem;
+      cursor: pointer;
+      font: inherit;
+    }
+    .row:hover { background: #2c343d; }
+    .row.active { background: #314052; box-shadow: inset 3px 0 0 var(--accent); }
+    .row .id { font-family: var(--mono); font-size: 0.8rem; color: var(--accent); }
+    .row .loc { font-size: 0.8rem; color: var(--muted); margin-top: 0.15rem; }
+    .row .actions { font-family: var(--mono); font-size: 0.85rem; margin-top: 0.35rem; }
+    .detail {
+      padding: 1.25rem 1.5rem 2rem;
+      overflow-y: auto;
+    }
+    .empty { color: var(--muted); }
+    .strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin: 0.75rem 0 1.25rem;
+    }
+    .chip {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      padding: 0.25rem 0.55rem;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--panel);
+      color: var(--muted);
+    }
+    .chip.on { color: var(--text); border-color: #4d5d6d; }
+    .chip.warn { color: var(--warn); border-color: #6a5530; }
+    .pair {
+      display: grid;
+      grid-template-columns: 5.5rem 1fr;
+      gap: 0.35rem 0.75rem;
+      font-family: var(--mono);
+      font-size: 0.95rem;
+      margin-bottom: 1.25rem;
+    }
+    .pair dt { color: var(--muted); }
+    .why-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      align-items: center;
+    }
+    button.why {
+      appearance: none;
+      border: 1px solid var(--accent);
+      background: #243649;
+      color: var(--accent);
+      font: inherit;
+      font-weight: 600;
+      padding: 0.55rem 1.1rem;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    button.why:hover:not(:disabled) { background: #2d4560; }
+    button.why:disabled { opacity: 0.55; cursor: wait; }
+    button.why.secondary {
+      border-color: var(--line);
+      background: transparent;
+      color: var(--muted);
+      font-weight: 500;
+    }
+    button.why.secondary:hover:not(:disabled) {
+      background: #2c343d;
+      color: var(--text);
+    }
+    .why-box {
+      margin-top: 1rem;
+      padding: 1rem 1.1rem;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    .why-box .focus {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 0.4rem;
+    }
+    .why-box .summary { font-size: 1.02rem; }
+    .why-box .source-badge {
+      display: inline-block;
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--warn);
+      border: 1px solid #6a5530;
+      border-radius: 999px;
+      padding: 0.15rem 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+    .err {
+      margin-top: 0.85rem;
+      color: var(--danger);
+      font-size: 0.9rem;
+    }
+    .ground {
+      margin-top: 0.75rem;
+      color: var(--warn);
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Shanten Sensei</h1>
+    <div class="meta" id="meta">Loading review…</div>
+    <div class="notice">Practice / review only — not for ranked assistance.</div>
+  </header>
+  <div class="layout">
+    <nav class="list" id="list" aria-label="Diverge turns"></nav>
+    <main class="detail" id="detail">
+      <p class="empty">Select a diverge turn.</p>
+    </main>
+  </div>
+  <script>
+    const state = { diverges: [], selected: null, explanations: {} };
+
+    function el(tag, attrs = {}, ...children) {
+      const node = document.createElement(tag);
+      for (const [k, v] of Object.entries(attrs)) {
+        if (k === "className") node.className = v;
+        else if (k.startsWith("on") && typeof v === "function") node.addEventListener(k.slice(2).toLowerCase(), v);
+        else if (v !== null && v !== undefined) node.setAttribute(k, v);
+      }
+      for (const child of children) {
+        if (child == null) continue;
+        node.append(child.nodeType ? child : document.createTextNode(String(child)));
+      }
+      return node;
+    }
+
+    function formatLoc(d) {
+      return `kyoku ${d.kyoku ?? "–"} · honba ${d.honba ?? "–"} · junme ${d.junme ?? "–"}`;
+    }
+
+    function statusChips(d) {
+      const s = d.statuses || {};
+      const chips = [];
+      chips.push({ text: s.menzen ? "menzen" : "open", on: true });
+      chips.push({
+        text: s.tenpai ? "tenpai" : `${s.shanten ?? d.shanten}-shanten`,
+        on: true,
+      });
+      chips.push({ text: `ukeire ${d.ukeire ?? "–"}`, on: true });
+      if (s.wait_shape) chips.push({ text: `wait=${s.wait_shape}`, on: true });
+      chips.push({
+        text: s.furiten ? "furiten" : "furiten=false",
+        on: !!s.furiten,
+        warn: !!s.furiten,
+      });
+      if (s.temporary_furiten) chips.push({ text: "temp furiten", warn: true });
+      if (s.riichi) chips.push({ text: "riichi", on: true });
+      if (s.ippatsu) chips.push({ text: "ippatsu", on: true });
+      if (s.dora_in_hand && s.dora_in_hand.length) {
+        chips.push({ text: `dora ${s.dora_in_hand.join(" ")}`, on: true });
+      }
+      if (s.visible_dora && s.visible_dora.length) {
+        chips.push({ text: `indicators ${s.visible_dora.join(" ")}`, on: true });
+      }
+      if (d.danger && Object.keys(d.danger).length) {
+        for (const [tile, tag] of Object.entries(d.danger)) {
+          chips.push({ text: `${tile}:${tag}`, warn: true });
+        }
+      }
+      return chips;
+    }
+
+    function renderList() {
+      const list = document.getElementById("list");
+      list.replaceChildren();
+      for (const d of state.diverges) {
+        const btn = el(
+          "button",
+          {
+            className: "row" + (state.selected === d.index ? " active" : ""),
+            type: "button",
+            onClick: () => selectDiverge(d.index),
+          },
+          el("div", { className: "id" }, `E${d.index}`),
+          el("div", { className: "loc" }, formatLoc(d)),
+          el("div", { className: "actions" }, `${d.mortal_best}  vs  ${d.player_action}`)
+        );
+        list.append(btn);
+      }
+    }
+
+    function selectDiverge(index) {
+      state.selected = index;
+      renderList();
+      renderDetail();
+    }
+
+    function renderDetail() {
+      const detail = document.getElementById("detail");
+      const d = state.diverges.find((x) => x.index === state.selected);
+      if (!d) {
+        detail.replaceChildren(el("p", { className: "empty" }, "Select a diverge turn."));
+        return;
+      }
+
+      const strip = el("div", { className: "strip" });
+      for (const chip of statusChips(d)) {
+        strip.append(
+          el(
+            "span",
+            {
+              className:
+                "chip" + (chip.on ? " on" : "") + (chip.warn ? " warn" : ""),
+            },
+            chip.text
+          )
+        );
+      }
+
+      const whyBox = el("div", { id: "why-box" });
+      const cached = state.explanations[d.index];
+      if (cached) {
+        whyBox.append(renderWhy(cached));
+      }
+
+      const err = el("div", { className: "err", id: "why-err" });
+      const offlineWrap = el("div", { id: "offline-wrap" });
+
+      const whyBtn = el(
+        "button",
+        {
+          className: "why",
+          type: "button",
+          id: "why-btn",
+          onClick: () => askWhy(d.index, "llm"),
+        },
+        cached && cached.source === "llm" ? "Why? (cached)" : "Why?"
+      );
+
+      detail.replaceChildren(
+        el("div", { className: "id", style: "font-family: var(--mono); color: var(--accent);" }, `E${d.index}`),
+        el("div", { className: "loc", style: "color: var(--muted); margin-top: 0.25rem;" }, formatLoc(d)),
+        strip,
+        el(
+          "dl",
+          { className: "pair" },
+          el("dt", {}, "Mortal"),
+          el("dd", {}, d.mortal_best),
+          el("dt", {}, "Player"),
+          el("dd", {}, d.player_action)
+        ),
+        el("div", { className: "why-actions" }, whyBtn, offlineWrap),
+        err,
+        whyBox
+      );
+    }
+
+    function renderWhy(payload) {
+      const box = el("div", { className: "why-box" });
+      const exp = payload.explanation || {};
+      if (payload.source === "template") {
+        box.append(el("div", { className: "source-badge" }, "offline template"));
+      }
+      if (exp.focus) box.append(el("div", { className: "focus" }, exp.focus));
+      box.append(el("div", { className: "summary" }, exp.summary || ""));
+      if (payload.grounding_errors && payload.grounding_errors.length) {
+        box.append(
+          el(
+            "div",
+            { className: "ground" },
+            "Grounding warnings: " + payload.grounding_errors.join("; ")
+          )
+        );
+      }
+      return box;
+    }
+
+    function showOfflineButton(index) {
+      const wrap = document.getElementById("offline-wrap");
+      if (!wrap || wrap.childElementCount) return;
+      wrap.append(
+        el(
+          "button",
+          {
+            className: "why secondary",
+            type: "button",
+            id: "offline-btn",
+            onClick: () => askWhy(index, "template"),
+          },
+          "Offline explanation"
+        )
+      );
+    }
+
+    async function askWhy(index, mode) {
+      const btn = document.getElementById("why-btn");
+      const offlineBtn = document.getElementById("offline-btn");
+      const err = document.getElementById("why-err");
+      const whyBox = document.getElementById("why-box");
+      if (err) err.textContent = "";
+      const cached = state.explanations[index];
+      if (cached && cached.source === mode) {
+        if (whyBox) {
+          whyBox.replaceChildren(renderWhy(cached));
+        }
+        return;
+      }
+      const activeBtn = mode === "template" ? offlineBtn : btn;
+      if (activeBtn) {
+        activeBtn.disabled = true;
+        activeBtn.textContent = mode === "template" ? "Building…" : "Asking…";
+      }
+      if (btn) btn.disabled = true;
+      if (offlineBtn) offlineBtn.disabled = true;
+      try {
+        const qs = mode === "template" ? "?mode=template" : "";
+        const resp = await fetch(`/api/explain/${index}${qs}`, { method: "POST" });
+        const data = await resp.json();
+        if (!resp.ok) {
+          throw new Error(data.error || `HTTP ${resp.status}`);
+        }
+        state.explanations[index] = data;
+        if (whyBox) {
+          whyBox.replaceChildren(renderWhy(data));
+        }
+        if (btn) {
+          btn.textContent =
+            data.source === "llm" ? "Why? (cached)" : "Why?";
+        }
+        if (offlineBtn) offlineBtn.textContent = "Offline explanation";
+      } catch (e) {
+        if (err) err.textContent = e.message || String(e);
+        if (mode === "llm") showOfflineButton(index);
+        if (btn) btn.textContent = "Why?";
+        if (offlineBtn) offlineBtn.textContent = "Offline explanation";
+      } finally {
+        if (btn) btn.disabled = false;
+        const ob = document.getElementById("offline-btn");
+        if (ob) ob.disabled = false;
+      }
+    }
+
+    async function boot() {
+      const meta = document.getElementById("meta");
+      try {
+        const resp = await fetch("/api/review");
+        if (!resp.ok) throw new Error(`Failed to load review (${resp.status})`);
+        const data = await resp.json();
+        state.diverges = data.diverges || [];
+        meta.textContent = `${data.log_id || "report"} · ${data.diverge_count} diverges`;
+        renderList();
+        if (state.diverges.length) selectDiverge(state.diverges[0].index);
+      } catch (e) {
+        meta.textContent = e.message || String(e);
+      }
+    }
+
+    boot();
+  </script>
+</body>
+</html>

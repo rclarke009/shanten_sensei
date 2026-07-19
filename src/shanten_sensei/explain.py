@@ -9,15 +9,26 @@ from typing import Any
 
 import httpx
 
+from shanten_sensei.live import next_best_action
 from shanten_sensei.schema import Explanation, Focus, TurnExplainInput
+
+ALLOWED_FOCUS = frozenset({"efficiency", "defense", "value", "tempo", "mixed"})
 
 SYSTEM_PROMPT = """\
 You are a beginner-friendly riichi mahjong coach. You explain Mortal’s \
 recommendation using only the game state, Mortal scores, and derived features \
 provided. You do not invent better moves. If the player’s move differs, say why \
-Mortal’s choice is better in efficiency, safety, or point situation. One or two \
+Mortal’s choice is better in efficiency, safety, or point situation. If this is \
+a live pre-decision turn (diverge is false / player_action equals mortal_best), \
+explain why Mortal’s top pick beats the next-best candidate. One or two \
 sentences. Plain English. Prefer concrete tile language (e.g. 5-sou, ryanmen wait). \
 Never recommend an action other than mortal_best.
+
+Return JSON with exactly these keys:
+- summary: string (1–2 sentences of coach text)
+- focus: one of "efficiency", "defense", "value", "tempo", "mixed" (enum only, never prose)
+- pinned_action: must equal mortal_best
+- contrasted_action: player's action when it differs; else next-best candidate; else null
 """
 
 
@@ -29,6 +40,8 @@ def build_user_payload(turn: TurnExplainInput) -> dict[str, Any]:
     return {
         "player_action": turn.player_action,
         "mortal_best": turn.mortal_best,
+        "next_best": next_best_action(turn),
+        "diverge": turn.diverge,
         "mortal_scores": scores,
         "hand": turn.game_state.hand,
         "shanten": turn.features.shanten,
@@ -37,6 +50,10 @@ def build_user_payload(turn: TurnExplainInput) -> dict[str, Any]:
         "danger": turn.features.danger,
         "context": turn.features.context,
     }
+
+
+def _action_display(action: str) -> str:
+    return action.split(" ", 1)[-1] if action.startswith("dahai ") else action
 
 
 def template_explain(turn: TurnExplainInput) -> Explanation:
@@ -48,20 +65,23 @@ def template_explain(turn: TurnExplainInput) -> Explanation:
     danger = turn.features.danger
     wait_shape = turn.features.statuses.wait_shape
 
-    best_tile = best.split(" ", 1)[-1] if best.startswith("dahai ") else best
-    player_tile = (
-        player.split(" ", 1)[-1] if player.startswith("dahai ") else player
-    )
+    best_tile = _action_display(best)
+    player_tile = _action_display(player)
+    alt = next_best_action(turn)
+    alt_tile = _action_display(alt) if alt else None
 
     focus: Focus = "efficiency"
     bits: list[str] = []
+    contrasted: str | None = None
 
-    if player != best:
-        bits.append(
-            f"Mortal prefers {best_tile} over {player_tile}"
-        )
+    if turn.diverge and player != best:
+        bits.append(f"Mortal prefers {best_tile} over {player_tile}")
+        contrasted = player
+    elif alt and alt != best:
+        bits.append(f"Mortal prefers {best_tile} over {alt_tile}")
+        contrasted = alt
     else:
-        bits.append(f"Mortal agrees with {best_tile}")
+        bits.append(f"Mortal recommends {best_tile}")
 
     if wait_shape:
         bits.append(f"keeping a {wait_shape} wait shape")
@@ -82,7 +102,7 @@ def template_explain(turn: TurnExplainInput) -> Explanation:
         summary=summary,
         focus=focus,
         pinned_action=best,
-        contrasted_action=player if player != best else None,
+        contrasted_action=contrasted,
     )
 
 
@@ -132,7 +152,11 @@ def explain(
         use_llm = bool(os.environ.get("OPENAI_API_KEY") or os.environ.get("SENSEI_API_KEY"))
 
     if use_llm:
-        explanation = _llm_explain(turn, model=model)
+        try:
+            explanation = _llm_explain(turn, model=model)
+        except Exception:
+            # Network / parse / schema failures → grounded template
+            explanation = template_explain(turn)
     else:
         explanation = template_explain(turn)
 
@@ -149,10 +173,19 @@ def explain(
     return explanation
 
 
+def explain_llm(
+    turn: TurnExplainInput,
+    *,
+    model: str | None = None,
+) -> Explanation:
+    """LLM-only explain. Raises if no API key or the call fails — no template fallback."""
+    return _llm_explain(turn, model=model)
+
+
 def _llm_explain(turn: TurnExplainInput, *, model: str | None) -> Explanation:
     api_key = os.environ.get("SENSEI_API_KEY") or os.environ.get("OPENAI_API_KEY")
     if not api_key:
-        return template_explain(turn)
+        raise ValueError("missing API key: set OPENAI_API_KEY or SENSEI_API_KEY")
 
     base_url = os.environ.get("SENSEI_BASE_URL", "https://api.openai.com/v1")
     model = model or os.environ.get("SENSEI_MODEL", "gpt-4o-mini")
@@ -166,8 +199,11 @@ def _llm_explain(turn: TurnExplainInput, *, model: str | None) -> Explanation:
             {
                 "role": "user",
                 "content": (
-                    "Explain this diverge turn. Return JSON with keys "
-                    "summary, focus, pinned_action, contrasted_action.\n"
+                    (
+                        "Explain this live coaching turn. Return JSON only.\n"
+                        if not turn.diverge
+                        else "Explain this diverge turn. Return JSON only.\n"
+                    )
                     + json.dumps(payload, ensure_ascii=False)
                 ),
             },
@@ -185,11 +221,42 @@ def _llm_explain(turn: TurnExplainInput, *, model: str | None) -> Explanation:
         content = resp.json()["choices"][0]["message"]["content"]
 
     data = json.loads(content)
+    return explanation_from_llm_data(turn, data)
+
+
+def coerce_focus(value: Any) -> Focus:
+    """Map LLM focus to a valid enum; invalid / prose → mixed."""
+    if isinstance(value, str) and value in ALLOWED_FOCUS:
+        return value  # type: ignore[return-value]
+    return "mixed"
+
+
+def explanation_from_llm_data(turn: TurnExplainInput, data: dict[str, Any]) -> Explanation:
+    """Build Explanation from LLM JSON, coercing soft schema mistakes."""
+    summary = data.get("summary")
+    focus_raw = data.get("focus")
+
+    # Recover if the model swapped summary into focus (common failure mode)
+    if (not isinstance(summary, str) or not summary.strip()) and isinstance(focus_raw, str):
+        if focus_raw not in ALLOWED_FOCUS and len(focus_raw.split()) > 2:
+            summary = focus_raw
+
+    if not isinstance(summary, str) or not summary.strip():
+        raise ValueError("LLM response missing summary")
+
+    contrasted = data.get("contrasted_action")
+    if contrasted is not None and not isinstance(contrasted, str):
+        contrasted = None
+
     return Explanation(
-        summary=data["summary"],
-        focus=data.get("focus") or "mixed",
-        pinned_action=data.get("pinned_action") or turn.mortal_best,
-        contrasted_action=data.get("contrasted_action"),
+        summary=summary.strip(),
+        focus=coerce_focus(focus_raw),
+        pinned_action=(
+            data["pinned_action"]
+            if isinstance(data.get("pinned_action"), str) and data["pinned_action"]
+            else turn.mortal_best
+        ),
+        contrasted_action=contrasted,
     )
 
 

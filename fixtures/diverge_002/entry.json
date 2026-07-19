@@ -1,0 +1,203 @@
+{
+  "note": "Real game 2026071901gm-0009-7126-0c7cc61e, player seat 3 (tw=3), kyoku 0 honba 0, junme 12. Mortal (mortal_298k, community HF checkpoint) wanted 8s, player discarded 6p at shanten 1.",
+  "kyoku": {
+    "kyoku": 0,
+    "honba": 0,
+    "end_status": [
+      {
+        "type": "hora",
+        "actor": 2,
+        "target": 0,
+        "deltas": [
+          -2600,
+          0,
+          3600,
+          0
+        ],
+        "ura_markers": []
+      }
+    ],
+    "relative_scores": [
+      25000,
+      25000,
+      25000,
+      25000
+    ]
+  },
+  "entry": {
+    "junme": 12,
+    "tiles_left": 24,
+    "last_actor": 3,
+    "tile": "C",
+    "state": {
+      "tehai": [
+        "2m",
+        "3m",
+        "4m",
+        "5mr",
+        "7m",
+        "7m",
+        "8m",
+        "9m",
+        "6p",
+        "4s",
+        "5s",
+        "6s",
+        "8s",
+        "C"
+      ],
+      "fuuros": []
+    },
+    "at_self_chi_pon": false,
+    "at_self_riichi": false,
+    "at_opponent_kakan": false,
+    "expected": {
+      "type": "dahai",
+      "actor": 3,
+      "pai": "8s",
+      "tsumogiri": false
+    },
+    "actual": {
+      "type": "dahai",
+      "actor": 3,
+      "pai": "6p",
+      "tsumogiri": false
+    },
+    "is_equal": false,
+    "details": [
+      {
+        "action": {
+          "type": "dahai",
+          "actor": 3,
+          "pai": "8s",
+          "tsumogiri": false
+        },
+        "q_value": 0.13488859,
+        "prob": 0.99999976
+      },
+      {
+        "action": {
+          "type": "dahai",
+          "actor": 3,
+          "pai": "C",
+          "tsumogiri": true
+        },
+        "q_value": -1.4064767,
+        "prob": 2.0227182e-07
+      },
+      {
+        "action": {
+          "type": "dahai",
+          "actor": 3,
+          "pai": "6p",
+          "tsumogiri": false
+        },
+        "q_value": -2.6845798,
+        "prob": 5.6912005e-13
+      },
+      {
+        "action": {
+          "type": "dahai",
+          "actor": 3,
+          "pai": "9m",
+          "tsumogiri": false
+        },
+        "q_value": -3.7770233,
+        "prob": 1.02513966e-17
+      },
+      {
+        "action": {
+          "type": "dahai",
+          "actor": 3,
+          "pai": "6s",
+          "tsumogiri": false
+        },
+        "q_value": -4.8013864,
+        "prob": 3.6478021e-22
+      },
+      {
+        "action": {
+          "type": "dahai",
+          "actor": 3,
+          "pai": "4s",
+          "tsumogiri": false
+        },
+        "q_value": -7.1949205,
+        "prob": 1.4690779e-32
+      },
+      {
+        "action": {
+          "type": "dahai",
+          "actor": 3,
+          "pai": "7m",
+          "tsumogiri": false
+        },
+        "q_value": -7.5790415,
+        "prob": 3.153761e-34
+      },
+      {
+        "action": {
+          "type": "dahai",
+          "actor": 3,
+          "pai": "8m",
+          "tsumogiri": false
+        },
+        "q_value": -7.7826643,
+        "prob": 4.1162756e-35
+      },
+      {
+        "action": {
+          "type": "dahai",
+          "actor": 3,
+          "pai": "5s",
+          "tsumogiri": false
+        },
+        "q_value": -7.971054,
+        "prob": 6.256607e-36
+      },
+      {
+        "action": {
+          "type": "dahai",
+          "actor": 3,
+          "pai": "3m",
+          "tsumogiri": false
+        },
+        "q_value": -8.309355,
+        "prob": 2.1238275e-37
+      },
+      {
+        "action": {
+          "type": "dahai",
+          "actor": 3,
+          "pai": "4m",
+          "tsumogiri": false
+        },
+        "q_value": -8.593496,
+        "prob": 1.2391052e-38
+      },
+      {
+        "action": {
+          "type": "dahai",
+          "actor": 3,
+          "pai": "2m",
+          "tsumogiri": false
+        },
+        "q_value": -8.624426,
+        "prob": 9.094583e-39
+      },
+      {
+        "action": {
+          "type": "dahai",
+          "actor": 3,
+          "pai": "5mr",
+          "tsumogiri": false
+        },
+        "q_value": -9.216215,
+        "prob": 2.4472e-41
+      }
+    ],
+    "shanten": 1,
+    "at_furiten": false,
+    "actual_index": 2
+  }
+}

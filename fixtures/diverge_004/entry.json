@@ -1,0 +1,110 @@
+{
+  "note": "Real game 2026071901gm-0009-7126-0c7cc61e, player seat 3, kyoku 1 honba 0, junme 1. Mortal wanted pon W, player chose none at shanten 3.",
+  "kyoku": {
+    "kyoku": 1,
+    "honba": 0,
+    "relative_scores": [
+      25000,
+      21400,
+      25000,
+      28600
+    ],
+    "end_status": [
+      {
+        "type": "hora",
+        "actor": 1,
+        "target": 3,
+        "deltas": [
+          0,
+          4900,
+          0,
+          -3900
+        ],
+        "ura_markers": [
+          "1p"
+        ]
+      },
+      {
+        "type": "hora",
+        "actor": 2,
+        "target": 3,
+        "deltas": [
+          0,
+          0,
+          16000,
+          -16000
+        ],
+        "ura_markers": [
+          "1p"
+        ]
+      }
+    ]
+  },
+  "entry": {
+    "junme": 1,
+    "tiles_left": 66,
+    "last_actor": 0,
+    "tile": "W",
+    "state": {
+      "tehai": [
+        "1m",
+        "3m",
+        "5mr",
+        "6m",
+        "6m",
+        "8m",
+        "4p",
+        "8p",
+        "9p",
+        "W",
+        "W",
+        "N",
+        "P"
+      ],
+      "fuuros": []
+    },
+    "at_self_chi_pon": false,
+    "at_self_riichi": false,
+    "at_opponent_kakan": false,
+    "expected": {
+      "type": "pon",
+      "actor": 3,
+      "target": 0,
+      "pai": "W",
+      "consumed": [
+        "W",
+        "W"
+      ]
+    },
+    "actual": {
+      "type": "none"
+    },
+    "is_equal": false,
+    "details": [
+      {
+        "action": {
+          "type": "pon",
+          "actor": 3,
+          "target": 0,
+          "pai": "W",
+          "consumed": [
+            "W",
+            "W"
+          ]
+        },
+        "q_value": 0.28520662,
+        "prob": 1.0
+      },
+      {
+        "action": {
+          "type": "none"
+        },
+        "q_value": -1.9075226,
+        "prob": 2.9998404e-10
+      }
+    ],
+    "shanten": 3,
+    "at_furiten": false,
+    "actual_index": 1
+  }
+}

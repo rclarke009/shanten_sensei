@@ -48,7 +48,7 @@ def tile_to_34(tile: str) -> int:
     """Map a tile string to a 0..33 index (aka reds → 5 of suit)."""
     t = normalize_tile(tile)
     if t in ("5mr", "5pr", "5sr"):
-        suit = t[2]
+        suit = t[1]
         base = {"m": 0, "p": 9, "s": 18}[suit]
         return base + 4  # 5m/5p/5s
     if t in _HONOR_TO_IDX:

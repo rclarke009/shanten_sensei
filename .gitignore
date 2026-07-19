@@ -9,3 +9,7 @@ dist/
 build/
 .env
 .DS_Store
+
+# Local review artifacts and Mortal weights (too large / machine-specific)
+game_logs/
+*.pth

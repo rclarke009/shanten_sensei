@@ -1,0 +1,197 @@
+{
+  "note": "Minimal full mjai-reviewer report shape for sensei review tests. Two kyokus; three entries (one match, two diverges).",
+  "engine": "mortal",
+  "log_id": "review_mini",
+  "player_id": 0,
+  "review": {
+    "total_reviewed": 3,
+    "total_matches": 1,
+    "kyokus": [
+      {
+        "kyoku": 0,
+        "honba": 0,
+        "relative_scores": [25000, 25000, 25000, 25000],
+        "entries": [
+          {
+            "junme": 2,
+            "tiles_left": 70,
+            "last_actor": 0,
+            "tile": "1m",
+            "state": {
+              "tehai": [
+                "1m", "2m", "3m", "4m", "5m", "6m",
+                "1p", "2p", "3p", "9p",
+                "4s", "5s", "6s", "7s"
+              ],
+              "fuuros": []
+            },
+            "at_self_chi_pon": false,
+            "at_self_riichi": false,
+            "at_opponent_kakan": false,
+            "expected": {
+              "type": "dahai",
+              "actor": 0,
+              "pai": "9p",
+              "tsumogiri": false
+            },
+            "actual": {
+              "type": "dahai",
+              "actor": 0,
+              "pai": "9p",
+              "tsumogiri": false
+            },
+            "is_equal": true,
+            "details": [
+              {
+                "action": {
+                  "type": "dahai",
+                  "actor": 0,
+                  "pai": "9p",
+                  "tsumogiri": false
+                },
+                "q_value": 0.5,
+                "prob": 0.5
+              }
+            ],
+            "shanten": 0,
+            "at_furiten": false,
+            "actual_index": 0,
+            "dora_indicators": ["4m"],
+            "player_discards": [],
+            "visible_discards": {},
+            "genbutsu": ["9p"]
+          },
+          {
+            "junme": 8,
+            "tiles_left": 52,
+            "last_actor": 0,
+            "tile": "7s",
+            "state": {
+              "tehai": [
+                "1m", "2m", "3m", "4m", "5m", "6m",
+                "1p", "2p", "3p", "9p",
+                "4s", "5s", "6s", "7s"
+              ],
+              "fuuros": []
+            },
+            "at_self_chi_pon": false,
+            "at_self_riichi": false,
+            "at_opponent_kakan": false,
+            "expected": {
+              "type": "dahai",
+              "actor": 0,
+              "pai": "9p",
+              "tsumogiri": false
+            },
+            "actual": {
+              "type": "dahai",
+              "actor": 0,
+              "pai": "5s",
+              "tsumogiri": false
+            },
+            "is_equal": false,
+            "details": [
+              {
+                "action": {
+                  "type": "dahai",
+                  "actor": 0,
+                  "pai": "9p",
+                  "tsumogiri": false
+                },
+                "q_value": 0.42,
+                "prob": 0.38
+              },
+              {
+                "action": {
+                  "type": "dahai",
+                  "actor": 0,
+                  "pai": "5s",
+                  "tsumogiri": false
+                },
+                "q_value": 0.11,
+                "prob": 0.09
+              }
+            ],
+            "shanten": 0,
+            "at_furiten": false,
+            "actual_index": 1,
+            "dora_indicators": ["4m"],
+            "player_discards": ["9m", "1s", "3s"],
+            "visible_discards": {
+              "1": ["9p", "2s", "E"],
+              "2": ["4p", "8m", "N"],
+              "3": ["7p", "2m", "W"]
+            },
+            "genbutsu": ["9p"]
+          }
+        ]
+      },
+      {
+        "kyoku": 1,
+        "honba": 1,
+        "relative_scores": [26000, 24000, 25000, 25000],
+        "entries": [
+          {
+            "junme": 4,
+            "tiles_left": 60,
+            "last_actor": 0,
+            "tile": "2p",
+            "state": {
+              "tehai": [
+                "1m", "2m", "3m", "4m", "5m", "6m",
+                "1p", "2p", "3p", "9p",
+                "4s", "5s", "6s", "7s"
+              ],
+              "fuuros": []
+            },
+            "at_self_chi_pon": false,
+            "at_self_riichi": false,
+            "at_opponent_kakan": false,
+            "expected": {
+              "type": "dahai",
+              "actor": 0,
+              "pai": "9p",
+              "tsumogiri": false
+            },
+            "actual": {
+              "type": "dahai",
+              "actor": 0,
+              "pai": "4s",
+              "tsumogiri": false
+            },
+            "is_equal": false,
+            "details": [
+              {
+                "action": {
+                  "type": "dahai",
+                  "actor": 0,
+                  "pai": "9p",
+                  "tsumogiri": false
+                },
+                "q_value": 0.4,
+                "prob": 0.35
+              },
+              {
+                "action": {
+                  "type": "dahai",
+                  "actor": 0,
+                  "pai": "4s",
+                  "tsumogiri": false
+                },
+                "q_value": 0.15,
+                "prob": 0.12
+              }
+            ],
+            "shanten": 0,
+            "at_furiten": false,
+            "actual_index": 1,
+            "dora_indicators": ["4m"],
+            "player_discards": ["9m"],
+            "visible_discards": {},
+            "genbutsu": []
+          }
+        ]
+      }
+    ]
+  }
+}

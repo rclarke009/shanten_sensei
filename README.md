@@ -198,28 +198,50 @@ Failure modes to guard in the prompt / post-checks:
 - [x] Define a JSON schema for `(game_state, mortal_output, features)` per turn, including `statuses` — `schema.py`
 - [x] Implement feature extraction (shanten, ukeire, basic danger) from libraries
 - [x] Implement hand statuses: menzen, tenpai, furiten (permanent + temporary), riichi/ippatsu, wait shape, dora in hand / visible dora
-- [ ] Review UI: persistent status strip for the above (plus shanten / ukeire); “Why?” remains on demand
+- [x] Review UI: persistent status strip for the above (plus shanten / ukeire); “Why?” remains on demand — `sensei serve`
 - [x] Implement `explain()` with an LLM API (env-based key; model configurable) + offline template fallback
 - [x] Add contradiction check: explanation must mention / pin Mortal’s action
-- [x] CLI: `sensei explain <entry.json>` (full `sensei review <log>` report still TODO)
-- [ ] 5–10 golden fixtures from real beginner-style mistakes (1 synthetic diverge fixture in place)
+- [x] CLI: `sensei explain <entry.json>`, `sensei review <report.json>`, and `sensei serve <report.json>`
+- [x] Golden fixtures: 5 diverge turns (1 synthetic + 4 real from a practice log); more via `scripts/extract_diverge.py`
 - [x] README section: “Practice / review only — not for ranked assistance”
 
 ### Phase 2 — Live overlay (practice / vs-AI only)
 
-**Goal:** Fork MahjongCopilot or Akagi; add `explain()` behind a **Why?** button on the existing overlay.
+**Goal:** Fork MahjongCopilot; wire Sensei `explain()` behind a **Why?** button on the existing overlay.
+
+**How to play live:** step-by-step setup + in-game flow → **[`docs/live-setup.md`](docs/live-setup.md)**
+
+**Repos:**
+
+| Piece | Location |
+|-------|----------|
+| Explainer (`turn_from_live` → `explain`) | This repo — [`docs/phase2-kickoff.md`](docs/phase2-kickoff.md) |
+| Overlay fork (GPL-3.0) | [shanten-sensei-overlay](https://github.com/rclarke009/shanten-sensei-overlay) |
 
 **Constraints:**
 
-- Practice / vs-AI / tutorial modes only — not ranked ladder against humans  
+- Practice / friend / vs-AI only — not ranked ladder against humans  
 - On-demand LLM calls only  
 - Same grounding rules as Phase 1  
+- Sibling repos: do not merge the GPL fork into this tree  
 
-**Deliverables:**
+**Deliverables (kickoff):**
 
-- Fork with Sensei module wired to live mjai + Mortal  
-- Overlay UX: recommendation (from Mortal) + hand status strip + optional explanation (from Sensei)  
-- Clear in-app warning about modes of use  
+- [x] Fork + Sensei adapter + mode gate  
+- [x] Overlay UX: Mortal recommendation + status strip + **Why?**  
+- [x] In-app practice-only banner; Why? disabled on ranked / unknown mode  
+
+---
+
+## How to play live (short)
+
+1. Clone [shanten-sensei-overlay](https://github.com/rclarke009/shanten-sensei-overlay) as a **sibling** of this repo.  
+2. Install Sensei editable + overlay deps; place an Akagi-compatible Mortal `.pth` in the overlay `models/` folder.  
+3. `python main.py` → **Start Browser** → Overlay on, Autoplay off.  
+4. Join a **friend / practice / vs-AI** game (not ranked).  
+5. On your turn, press **Why?** for a grounded explanation.
+
+Full commands, API key, and troubleshooting: [`docs/live-setup.md`](docs/live-setup.md).
 
 ---
 
@@ -273,7 +295,8 @@ A beginner can play a practice game, open a review (or press **Why?**), and get 
 
 - [Mortal](https://github.com/Equim-chan/Mortal) — riichi AI  
 - [mjai-reviewer](https://github.com/Equim-chan/mjai-reviewer) — post-game Mortal review  
-- [MahjongCopilot](https://github.com/latorc/MahjongCopilot) — live guidance + overlay  
+- [MahjongCopilot](https://github.com/latorc/MahjongCopilot) — live guidance + overlay (upstream of our fork)  
+- [shanten-sensei-overlay](https://github.com/rclarke009/shanten-sensei-overlay) — Sensei Why? on Copilot  
 - [Akagi](https://github.com/shinkuan/Akagi) — live analysis, swappable models  
 - [mjai](https://mjai.app/) — event protocol  
 
@@ -281,16 +304,31 @@ A beginner can play a practice game, open a review (or press **Why?**), and get 
 
 ## Status
 
-Phase 1 scaffold in progress:
+Phase 1 ready (post-game explainer + local review UI). Phase 2 live overlay is in the sibling fork.
 
+- **Live play how-to:** [`docs/live-setup.md`](docs/live-setup.md)
 - Contract: [`docs/phase1-contract.md`](docs/phase1-contract.md)
-- Schema / features / `explain()`: `src/shanten_sensei/`
-- First diverge fixture: `fixtures/diverge_001/` (shape-faithful; swap for a real mjai-reviewer `--json` entry when you have one)
+- Phase 2 live contract: [`docs/phase2-kickoff.md`](docs/phase2-kickoff.md)
+- Schema / features / `explain()` / `live.py`: `src/shanten_sensei/`
+- Golden fixtures: `fixtures/diverge_001/` … `diverge_005/` (cut more with `scripts/extract_diverge.py`)
+- Full reports with `mjai_log` enrich rivers / dora / genbutsu for the status strip
+- License: Apache-2.0 (this repo); overlay fork remains GPL-3.0
+- Overlay: [shanten-sensei-overlay](https://github.com/rclarke009/shanten-sensei-overlay)
 
 ```bash
 uv venv .venv
 uv pip install -e ".[dev]" --python .venv/bin/python
-uv run --python .venv/bin/python sensei explain fixtures/diverge_001/entry.json
+# optional: put OPENAI_API_KEY or SENSEI_API_KEY in a repo-root .env (auto-loaded)
+uv run --python .venv/bin/python sensei explain fixtures/diverge_002/entry.json
+uv run --python .venv/bin/python sensei review fixtures/review_mini/report.json
+# local review UI (Why? uses the API key; Offline explanation if unavailable):
+uv run --python .venv/bin/python sensei serve fixtures/review_mini/report.json
+# or a full mjai-reviewer export:
+# uv run --python .venv/bin/python sensei review game_logs/review.json
+# uv run --python .venv/bin/python sensei serve game_logs/review.json
+# cut another fixture from a report:
+# uv run --python .venv/bin/python scripts/extract_diverge.py game_logs/review.json \
+#   --kyoku 0 --honba 0 --junme 3 -o fixtures/diverge_00N/entry.json
 uv run --python .venv/bin/python pytest
 ```
 
