@@ -82,12 +82,16 @@ Confirm **Settings → Model** is `Local` and points at that file. How to obtain
    ```bash
    cd shanten-sensei-overlay
    source venv/bin/activate
-   # export OPENAI_API_KEY=...   # if not using a .env that the process sees
+   # Why? LLM: overlay loads .env from its cwd, or sibling ../shanten_sensei/.env
+   # (or export OPENAI_API_KEY / SENSEI_API_KEY before launch)
    python main.py
    ```
 
 2. **Open Majsoul through the app**  
    Click **Start Browser** in the toolbar. Use the Chromium window Copilot launches (MITM must see the game traffic). Do not play in a separate browser outside the proxy.
+
+   Default URL is the English client: `https://mahjongsoul.game.yo-star.com/`.  
+   If Chromium opens Chinese Majsoul (`game.maj-soul.com`), change **Settings → Majsoul URL** to the YoStar link above, save, then Start Browser again. (Browser auto-translate cannot fix Majsoul — the UI is canvas-drawn.)
 
 3. **Turn on Overlay; leave Autoplay off**  
    Overlay = on so recommendations / status show in-game. Autoplay stays off — Sensei is a coach, not a bot.
@@ -105,8 +109,9 @@ Confirm **Settings → Model** is `Local` and points at that file. How to obtain
    - With an API key → LLM wording.  
    - Without → offline template text (still grounded in Mortal + features).
 
-7. **Repeat as needed**  
-   Why? is on demand only (cost + attention). Same turn is cached if you press again.
+7. **When the tip changes**  
+   Stale Why? text clears as soon as Mortal’s recommendation changes (or clears). Press **Why?** again for the new tip.  
+   Optional: Settings → **Auto Why?** regenerates automatically on each new tip (uses the API when a key is set — cost per tip). Same tip is still cached if nothing changed.
 
 ---
 
@@ -118,7 +123,7 @@ Confirm **Settings → Model** is `Local` and points at that file. How to obtain
 | Overlay blank | Overlay toggle on; play inside the app’s browser |
 | Why? greyed / “disabled” | You’re in ranked or mode is unknown — use friend / practice |
 | `shanten_sensei` import errors | Re-run `pip install -e ../shanten_sensei` inside the overlay venv |
-| Generic / template Why? text | Set `OPENAI_API_KEY` or `SENSEI_API_KEY` in the environment before `python main.py` |
+| Generic / template Why? text | Put `OPENAI_API_KEY` or `SENSEI_API_KEY` in overlay `.env`, sibling `../shanten_sensei/.env`, or export before `python main.py`. Restart the overlay after changing keys. |
 
 ---
 

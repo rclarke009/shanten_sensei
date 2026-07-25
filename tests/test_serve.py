@@ -53,9 +53,18 @@ def test_api_review_list_no_explanations(session_and_server):
     assert first["player_action"] == "dahai 5s"
     assert "statuses" in first
     assert "menzen" in first["statuses"]
+    assert isinstance(first["hand"], list) and len(first["hand"]) >= 13
+    assert "9p" in first["hand"]
+    assert isinstance(first["ukeire_tiles"], list)
+    assert isinstance(first.get("ukeire_remaining"), dict)
+    assert isinstance(first["calls"], list)
+    assert first.get("wait_shape") is not None or first["statuses"].get("wait_shape") is not None
     assert "explanation" not in first
     for d in data["diverges"]:
         assert "explanation" not in d
+        assert "hand" in d
+        assert "ukeire_tiles" in d
+        assert "calls" in d
 
 
 def test_api_explain_caches_and_pins(session_and_server):

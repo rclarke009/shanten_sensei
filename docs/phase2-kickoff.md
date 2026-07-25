@@ -63,7 +63,7 @@ PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium
 python main.py
 ```
 
-Set `OPENAI_API_KEY` or `SENSEI_API_KEY` for LLM Why?; otherwise template fallback.
+Set `OPENAI_API_KEY` or `SENSEI_API_KEY` for LLM Why? (overlay `.env`, sibling `../shanten_sensei/.env`, or export); otherwise template fallback. Overlay `main.py` loads these at startup.
 
 ## Non-goals (kickoff)
 

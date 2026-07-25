@@ -27,6 +27,10 @@ class HandStatuses(BaseModel):
 class UkeireInfo(BaseModel):
     count: int
     tiles: list[str] = Field(default_factory=list)
+    remaining_by_tile: dict[str, int] = Field(
+        default_factory=dict,
+        description="Visible-adjusted copies left per improving tile",
+    )
 
 
 class GameState(BaseModel):
@@ -58,9 +62,17 @@ class MortalOutput(BaseModel):
 class DerivedFeatures(BaseModel):
     shanten: int
     ukeire: UkeireInfo
+    ukeire_alt: UkeireInfo | None = Field(
+        default=None,
+        description="Ukeire after contrasted dahai (player / next-best), if different",
+    )
     statuses: HandStatuses
     danger: dict[str, str] = Field(default_factory=dict)
     context: dict[str, Any] = Field(default_factory=dict)
+    shape_goals: list[str] = Field(
+        default_factory=list,
+        description="Likely yaku/shape tags from heuristics (not Mortal intent)",
+    )
 
 
 class TurnExplainInput(BaseModel):

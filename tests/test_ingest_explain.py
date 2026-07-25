@@ -72,6 +72,19 @@ def test_template_explain_pins_mortal():
     result = template_explain(turn)
     assert result.pinned_action == "dahai 9p"
     assert result.contrasted_action == "dahai 5s"
+    assert "9-pin" in result.summary.lower()
+    assert "5-sou" in result.summary.lower()
+    assert validate_explanation(turn, result) == []
+
+
+def test_template_explain_honor_haku_display():
+    turn = turn_from_path(FIXTURES_ROOT / "diverge_003" / "entry.json")
+    result = template_explain(turn)
+    assert result.pinned_action == "dahai P"
+    assert "Haku" in result.summary
+    assert "🀆" in result.summary
+    assert " F " not in f" {result.summary} "
+    assert " P " not in f" {result.summary} "
     assert validate_explanation(turn, result) == []
 
 

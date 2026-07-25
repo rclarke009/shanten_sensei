@@ -106,6 +106,7 @@ class ReviewSession:
     @staticmethod
     def _diverge_summary(d: DivergeTurn) -> dict[str, Any]:
         turn = d.turn
+        statuses = turn.features.statuses
         return {
             "index": d.index,
             "kyoku": d.kyoku,
@@ -115,7 +116,12 @@ class ReviewSession:
             "player_action": turn.player_action,
             "shanten": turn.features.shanten,
             "ukeire": turn.features.ukeire.count,
-            "statuses": turn.features.statuses.model_dump(),
+            "ukeire_tiles": list(turn.features.ukeire.tiles),
+            "ukeire_remaining": dict(turn.features.ukeire.remaining_by_tile),
+            "hand": list(turn.game_state.hand),
+            "calls": list(turn.game_state.calls),
+            "wait_shape": statuses.wait_shape,
+            "statuses": statuses.model_dump(),
             "danger": turn.features.danger,
         }
 

@@ -133,6 +133,12 @@ def turn_from_live(
         for c in cand_models
         if c.action.startswith("dahai ")
     ]
+    alt_discard = contrasted_dahai_tile(
+        mortal_best=mortal_best,
+        player_action=player_action,
+        candidates=cand_models,
+        diverge=bool(diverge),
+    )
 
     feat_context = {
         "junme": turn,
@@ -154,6 +160,7 @@ def turn_from_live(
         visible_discards=visible_n,
         context=feat_context,
         ukeire_after_discard=discard_tile,
+        ukeire_alt_after_discard=alt_discard,
     )
 
     game_state = GameState(
@@ -193,4 +200,20 @@ def next_best_action(turn: TurnExplainInput) -> str | None:
     for c in turn.mortal_output.candidates:
         if c.action != best:
             return c.action
+    return None
+
+
+def contrasted_dahai_tile(
+    *,
+    mortal_best: str,
+    player_action: str,
+    candidates: list[MortalCandidate],
+    diverge: bool,
+) -> str | None:
+    """Tile for ukeire_alt: player cut on diverge, else next-best dahai candidate."""
+    if diverge and player_action.startswith("dahai ") and player_action != mortal_best:
+        return normalize_tile(player_action.split(" ", 1)[1])
+    for c in candidates:
+        if c.action.startswith("dahai ") and c.action != mortal_best:
+            return normalize_tile(c.action.split(" ", 1)[1])
     return None

@@ -85,6 +85,69 @@ def deaka(tile: str) -> str:
     return t
 
 
+# Unicode mahjong tiles (same block as overlay MJAI_TILE_2_UNICODE)
+_TILE_EMOJI: dict[str, str] = {
+    **{f"{i}m": c for i, c in enumerate("🀇🀈🀉🀊🀋🀌🀍🀎🀏", 1)},
+    **{f"{i}p": c for i, c in enumerate("🀙🀚🀛🀜🀝🀞🀟🀠🀡", 1)},
+    **{f"{i}s": c for i, c in enumerate("🀐🀑🀒🀓🀔🀕🀖🀗🀘", 1)},
+    "5mr": "🀋",
+    "5pr": "🀝",
+    "5sr": "🀔",
+    "E": "🀀",
+    "S": "🀁",
+    "W": "🀂",
+    "N": "🀃",
+    "P": "🀆",
+    "F": "🀅",
+    "C": "🀄",
+}
+
+_HONOR_NAMES: dict[str, str] = {
+    "E": "East",
+    "S": "South",
+    "W": "West",
+    "N": "North",
+    "P": "Haku",
+    "F": "Hatsu",
+    "C": "Chun",
+}
+
+_SUIT_NAMES = {"m": "man", "p": "pin", "s": "sou"}
+
+
+def human_tile_label(tile: str) -> str:
+    """Beginner-facing label: emoji + English name (e.g. 🀅Hatsu, 9-pin)."""
+    try:
+        t = tile_from_34(tile_to_34(tile))
+        # Preserve aka reds (tile_to_34 collapses them to plain 5s)
+        norm = normalize_tile(tile)
+        if norm in ("5mr", "5pr", "5sr"):
+            t = norm
+    except ValueError:
+        t = normalize_tile(tile)
+        if len(t) == 1 and t.upper() in _HONOR_NAMES:
+            t = t.upper()
+    emoji = _TILE_EMOJI.get(t, "")
+    if t in _HONOR_NAMES:
+        return f"{emoji}{_HONOR_NAMES[t]}"
+    if t in ("5mr", "5pr", "5sr"):
+        suit = _SUIT_NAMES[t[1]]
+        return f"{emoji}red 5-{suit}"
+    if len(t) >= 2 and t[0].isdigit() and t[1] in _SUIT_NAMES:
+        return f"{emoji}{t[0]}-{_SUIT_NAMES[t[1]]}"
+    return tile
+
+
+def human_action_label(action: str) -> str:
+    """Humanize tile args in action labels; keep verbs (dahai → tile only for prose)."""
+    if action.startswith("dahai "):
+        return human_tile_label(action.split(" ", 1)[1])
+    parts = action.split(" ", 1)
+    if len(parts) == 2:
+        return f"{parts[0]} {human_tile_label(parts[1])}"
+    return action
+
+
 def action_to_label(action: dict) -> str:
     """Compact label for prompts / pinning, e.g. 'dahai 5s'."""
     kind = action.get("type") or action.get("type_")

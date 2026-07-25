@@ -15,6 +15,10 @@
       --warn: #e8b86d;
       --danger: #e07a7a;
       --ok: #7dcea0;
+      --man: #c45c5c;
+      --pin: #3d7ec9;
+      --sou: #3d9a6a;
+      --honor: #b8a06a;
       --mono: "IBM Plex Mono", "SF Mono", Menlo, Consolas, monospace;
       --sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
     }
@@ -82,11 +86,27 @@
       overflow-y: auto;
     }
     .empty { color: var(--muted); }
+    .detail-head {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem 0.75rem;
+      align-items: baseline;
+      margin-bottom: 0.85rem;
+    }
+    .detail-head .id {
+      font-family: var(--mono);
+      color: var(--accent);
+      font-size: 1rem;
+    }
+    .detail-head .loc {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
     .strip {
       display: flex;
       flex-wrap: wrap;
       gap: 0.4rem;
-      margin: 0.75rem 0 1.25rem;
+      margin: 0 0 0.75rem;
     }
     .chip {
       font-family: var(--mono);
@@ -99,15 +119,127 @@
     }
     .chip.on { color: var(--text); border-color: #4d5d6d; }
     .chip.warn { color: var(--warn); border-color: #6a5530; }
-    .pair {
-      display: grid;
-      grid-template-columns: 5.5rem 1fr;
-      gap: 0.35rem 0.75rem;
+    .section-label {
       font-family: var(--mono);
-      font-size: 0.95rem;
-      margin-bottom: 1.25rem;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin: 0 0 0.45rem;
     }
-    .pair dt { color: var(--muted); }
+    .tile-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.28rem;
+      margin-bottom: 0.85rem;
+    }
+    .tile {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-width: 2.35rem;
+      height: 3.1rem;
+      padding: 0.2rem 0.25rem 0.15rem;
+      border-radius: 5px;
+      background: #f4f1ea;
+      border: 2px solid #c8c2b4;
+      color: #1a1a1a;
+      line-height: 1;
+      box-shadow: 0 1px 0 #9a9488;
+    }
+    .tile.sm {
+      min-width: 1.85rem;
+      height: 2.45rem;
+      padding: 0.12rem 0.18rem 0.1rem;
+    }
+    .tile.sm .glyph { font-size: 1.2rem; }
+    .tile.sm .code { font-size: 0.5rem; }
+    .tile .glyph {
+      font-size: 1.55rem;
+      line-height: 1.1;
+    }
+    .tile .code {
+      font-family: var(--mono);
+      font-size: 0.55rem;
+      margin-top: 0.1rem;
+      color: #5a554c;
+    }
+    .tile.suit-m .glyph { color: var(--man); }
+    .tile.suit-p .glyph { color: var(--pin); }
+    .tile.suit-s .glyph { color: var(--sou); }
+    .tile.suit-z .glyph { color: var(--honor); }
+    .tile.mortal {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent), 0 1px 0 #9a9488;
+    }
+    .tile.player {
+      border-color: var(--warn);
+      box-shadow: 0 0 0 1px var(--warn), 0 1px 0 #9a9488;
+    }
+    .tile.both {
+      border-color: var(--ok);
+      box-shadow: 0 0 0 1px var(--ok), 0 1px 0 #9a9488;
+    }
+    .moves {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.65rem 1rem;
+      margin: 0 0 0.85rem;
+      padding: 0.55rem 0.75rem;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    .move {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      min-width: 0;
+    }
+    .move .label {
+      font-size: 0.78rem;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .move .action {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+    .move-vs {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+    .board-details {
+      margin-top: 1.1rem;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 0.35rem 0.75rem 0.15rem;
+    }
+    .board-details > summary {
+      cursor: pointer;
+      list-style: none;
+      font-size: 0.88rem;
+      color: var(--muted);
+      padding: 0.45rem 0;
+      user-select: none;
+    }
+    .board-details > summary::-webkit-details-marker { display: none; }
+    .board-details > summary::before {
+      content: "▸ ";
+      color: var(--accent);
+      font-family: var(--mono);
+    }
+    .board-details[open] > summary::before { content: "▾ "; }
+    .board-details[open] > summary {
+      margin-bottom: 0.55rem;
+      border-bottom: 1px solid var(--line);
+    }
+    .board-details .inner { padding-bottom: 0.5rem; }
     .why-actions {
       display: flex;
       flex-wrap: wrap;
@@ -138,7 +270,7 @@
       color: var(--text);
     }
     .why-box {
-      margin-top: 1rem;
+      margin-top: 0.65rem;
       padding: 1rem 1.1rem;
       background: var(--panel);
       border: 1px solid var(--line);
@@ -152,7 +284,7 @@
       letter-spacing: 0.06em;
       margin-bottom: 0.4rem;
     }
-    .why-box .summary { font-size: 1.02rem; }
+    .why-box .summary { font-size: 1.05rem; }
     .why-box .source-badge {
       display: inline-block;
       font-family: var(--mono);
@@ -164,7 +296,7 @@
       margin-bottom: 0.5rem;
     }
     .err {
-      margin-top: 0.85rem;
+      margin-top: 0.55rem;
       color: var(--danger);
       font-size: 0.9rem;
     }
@@ -188,20 +320,100 @@
     </main>
   </div>
   <script>
-    const state = { diverges: [], selected: null, explanations: {} };
+    const state = {
+      diverges: [],
+      selected: null,
+      explanations: {},
+      loadingOffline: {},
+    };
+
+    const MAN = ["🀇","🀈","🀉","🀊","🀋","🀌","🀍","🀎","🀏"];
+    const PIN = ["🀙","🀚","🀛","🀜","🀝","🀞","🀟","🀠","🀡"];
+    const SOU = ["🀐","🀑","🀒","🀓","🀔","🀕","🀖","🀗","🀘"];
+    const HONOR = { E: "🀀", S: "🀁", W: "🀂", N: "🀃", P: "🀆", F: "🀅", C: "🀄" };
 
     function el(tag, attrs = {}, ...children) {
       const node = document.createElement(tag);
       for (const [k, v] of Object.entries(attrs)) {
         if (k === "className") node.className = v;
-        else if (k.startsWith("on") && typeof v === "function") node.addEventListener(k.slice(2).toLowerCase(), v);
-        else if (v !== null && v !== undefined) node.setAttribute(k, v);
+        else if (k.startsWith("on") && typeof v === "function") {
+          node.addEventListener(k.slice(2).toLowerCase(), v);
+        } else if (v !== null && v !== undefined) node.setAttribute(k, v);
       }
       for (const child of children) {
         if (child == null) continue;
         node.append(child.nodeType ? child : document.createTextNode(String(child)));
       }
       return node;
+    }
+
+    function tileFace(label) {
+      const t = String(label || "").trim();
+      if (!t) return { glyph: "?", suit: "z", code: "?" };
+      if (HONOR[t]) return { glyph: HONOR[t], suit: "z", code: t };
+      const red = /^(5[mps])r$/.test(t) || t === "0m" || t === "0p" || t === "0s";
+      let base = t;
+      if (t === "0m" || t === "5mr") base = "5m";
+      else if (t === "0p" || t === "5pr") base = "5p";
+      else if (t === "0s" || t === "5sr") base = "5s";
+      else if (red) base = t.slice(0, 2);
+      if (base.length >= 2 && base[0] >= "1" && base[0] <= "9") {
+        const n = parseInt(base[0], 10) - 1;
+        const suit = base[1];
+        if (suit === "m") return { glyph: MAN[n], suit: "m", code: t };
+        if (suit === "p") return { glyph: PIN[n], suit: "p", code: t };
+        if (suit === "s") return { glyph: SOU[n], suit: "s", code: t };
+      }
+      return { glyph: t, suit: "z", code: t };
+    }
+
+    function actionTile(action) {
+      if (!action) return null;
+      const s = String(action);
+      if (s.startsWith("dahai ")) return s.slice(6).trim();
+      return null;
+    }
+
+    function makeTile(label, mark, { small = false } = {}) {
+      const face = tileFace(label);
+      let markClass = "";
+      if (mark === "mortal") markClass = " mortal";
+      else if (mark === "player") markClass = " player";
+      else if (mark === "both") markClass = " both";
+      return el(
+        "span",
+        {
+          className: `tile suit-${face.suit}${markClass}${small ? " sm" : ""}`,
+          title: face.code,
+          "aria-label": face.code,
+        },
+        el("span", { className: "glyph" }, face.glyph),
+        el("span", { className: "code" }, face.code)
+      );
+    }
+
+    function tileRow(labels, { mortalTile, playerTile } = {}) {
+      const row = el("div", { className: "tile-row" });
+      const usedMortal = { n: 0 };
+      const usedPlayer = { n: 0 };
+      for (const label of labels || []) {
+        let mark = null;
+        const isM = mortalTile && label === mortalTile;
+        const isP = playerTile && label === playerTile;
+        if (isM && isP && usedMortal.n === 0 && usedPlayer.n === 0) {
+          mark = "both";
+          usedMortal.n += 1;
+          usedPlayer.n += 1;
+        } else if (isM && usedMortal.n === 0) {
+          mark = "mortal";
+          usedMortal.n += 1;
+        } else if (isP && usedPlayer.n === 0) {
+          mark = "player";
+          usedPlayer.n += 1;
+        }
+        row.append(makeTile(label, mark));
+      }
+      return row;
     }
 
     function formatLoc(d) {
@@ -211,15 +423,18 @@
     function statusChips(d) {
       const s = d.statuses || {};
       const chips = [];
-      chips.push({ text: s.menzen ? "menzen" : "open", on: true });
-      chips.push({
-        text: s.tenpai ? "tenpai" : `${s.shanten ?? d.shanten}-shanten`,
-        on: true,
-      });
+      chips.push({ text: s.menzen ? "closed" : "open", on: true });
+      if (s.tenpai) {
+        chips.push({ text: "ready (tenpai)", on: true });
+      } else {
+        const n = s.shanten ?? d.shanten;
+        chips.push({ text: `${n}-shanten`, on: true });
+      }
       chips.push({ text: `ukeire ${d.ukeire ?? "–"}`, on: true });
-      if (s.wait_shape) chips.push({ text: `wait=${s.wait_shape}`, on: true });
+      const wait = d.wait_shape || s.wait_shape;
+      if (wait) chips.push({ text: `wait ${wait}`, on: true });
       chips.push({
-        text: s.furiten ? "furiten" : "furiten=false",
+        text: s.furiten ? "furiten" : "not furiten",
         on: !!s.furiten,
         warn: !!s.furiten,
       });
@@ -263,6 +478,19 @@
       state.selected = index;
       renderList();
       renderDetail();
+      ensureOfflineExplanation(index);
+    }
+
+    function moveChip(kind, title, action) {
+      const tile = actionTile(action);
+      const chip = el(
+        "div",
+        { className: "move" },
+        el("span", { className: "label" }, title)
+      );
+      if (tile) chip.append(makeTile(tile, kind, { small: true }));
+      chip.append(el("span", { className: "action" }, action || "–"));
+      return chip;
     }
 
     function renderDetail() {
@@ -272,6 +500,9 @@
         detail.replaceChildren(el("p", { className: "empty" }, "Select a diverge turn."));
         return;
       }
+
+      const mortalTile = actionTile(d.mortal_best);
+      const playerTile = actionTile(d.player_action);
 
       const strip = el("div", { className: "strip" });
       for (const chip of statusChips(d)) {
@@ -287,15 +518,30 @@
         );
       }
 
+      const moves = el(
+        "div",
+        { className: "moves" },
+        moveChip("mortal", "Mortal", d.mortal_best),
+        el("span", { className: "move-vs" }, "vs"),
+        moveChip("player", "You", d.player_action)
+      );
+
       const whyBox = el("div", { id: "why-box" });
-      const cached = state.explanations[d.index];
-      if (cached) {
-        whyBox.append(renderWhy(cached));
+      const preferred =
+        state.explanations[d.index + ":llm"] ||
+        state.explanations[d.index + ":template"];
+      if (preferred) {
+        whyBox.append(renderWhy(preferred));
+      } else if (state.loadingOffline[d.index]) {
+        whyBox.append(
+          el("div", { className: "why-box" }, el("div", { className: "summary" }, "Building explanation…"))
+        );
       }
 
       const err = el("div", { className: "err", id: "why-err" });
       const offlineWrap = el("div", { id: "offline-wrap" });
 
+      const llmCached = state.explanations[d.index + ":llm"];
       const whyBtn = el(
         "button",
         {
@@ -304,24 +550,57 @@
           id: "why-btn",
           onClick: () => askWhy(d.index, "llm"),
         },
-        cached && cached.source === "llm" ? "Why? (cached)" : "Why?"
+        llmCached ? "Why? (cached)" : "Why?"
+      );
+
+      const boardInner = el("div", { className: "inner" });
+      boardInner.append(
+        el("div", { className: "section-label" }, "Hand"),
+        tileRow(d.hand || [], { mortalTile, playerTile })
+      );
+      if (d.calls && d.calls.length) {
+        boardInner.append(
+          el("div", { className: "section-label" }, "Calls"),
+          el(
+            "div",
+            { className: "tile-row" },
+            el(
+              "span",
+              { style: "font-family: var(--mono); font-size: 0.85rem; color: var(--muted);" },
+              JSON.stringify(d.calls)
+            )
+          )
+        );
+      }
+      const ukeireTiles = d.ukeire_tiles || [];
+      if (ukeireTiles.length) {
+        boardInner.append(
+          el("div", { className: "section-label" }, `Waits / ukeire (${d.ukeire ?? ukeireTiles.length})`),
+          tileRow(ukeireTiles)
+        );
+      }
+
+      const boardDetails = el(
+        "details",
+        { className: "board-details" },
+        el("summary", {}, "Show hand & waits"),
+        boardInner
       );
 
       detail.replaceChildren(
-        el("div", { className: "id", style: "font-family: var(--mono); color: var(--accent);" }, `E${d.index}`),
-        el("div", { className: "loc", style: "color: var(--muted); margin-top: 0.25rem;" }, formatLoc(d)),
-        strip,
         el(
-          "dl",
-          { className: "pair" },
-          el("dt", {}, "Mortal"),
-          el("dd", {}, d.mortal_best),
-          el("dt", {}, "Player"),
-          el("dd", {}, d.player_action)
+          "div",
+          { className: "detail-head" },
+          el("span", { className: "id" }, `E${d.index}`),
+          el("span", { className: "loc" }, formatLoc(d))
         ),
+        strip,
+        moves,
+        el("div", { className: "section-label" }, "Explanation"),
         el("div", { className: "why-actions" }, whyBtn, offlineWrap),
         err,
-        whyBox
+        whyBox,
+        boardDetails
       );
     }
 
@@ -362,26 +641,45 @@
       );
     }
 
-    async function askWhy(index, mode) {
+    function cacheKey(index, mode) {
+      return `${index}:${mode}`;
+    }
+
+    async function ensureOfflineExplanation(index) {
+      if (state.explanations[cacheKey(index, "template")] || state.explanations[cacheKey(index, "llm")]) {
+        return;
+      }
+      if (state.loadingOffline[index]) return;
+      state.loadingOffline[index] = true;
+      try {
+        await askWhy(index, "template", { silent: true });
+      } finally {
+        state.loadingOffline[index] = false;
+        if (state.selected === index) renderDetail();
+      }
+    }
+
+    async function askWhy(index, mode, opts = {}) {
       const btn = document.getElementById("why-btn");
       const offlineBtn = document.getElementById("offline-btn");
       const err = document.getElementById("why-err");
       const whyBox = document.getElementById("why-box");
-      if (err) err.textContent = "";
-      const cached = state.explanations[index];
-      if (cached && cached.source === mode) {
-        if (whyBox) {
+      if (err && !opts.silent) err.textContent = "";
+      const key = cacheKey(index, mode);
+      const cached = state.explanations[key];
+      if (cached) {
+        if (whyBox && state.selected === index) {
           whyBox.replaceChildren(renderWhy(cached));
         }
-        return;
+        return cached;
       }
       const activeBtn = mode === "template" ? offlineBtn : btn;
-      if (activeBtn) {
+      if (!opts.silent && activeBtn) {
         activeBtn.disabled = true;
         activeBtn.textContent = mode === "template" ? "Building…" : "Asking…";
       }
-      if (btn) btn.disabled = true;
-      if (offlineBtn) offlineBtn.disabled = true;
+      if (!opts.silent && btn) btn.disabled = true;
+      if (!opts.silent && offlineBtn) offlineBtn.disabled = true;
       try {
         const qs = mode === "template" ? "?mode=template" : "";
         const resp = await fetch(`/api/explain/${index}${qs}`, { method: "POST" });
@@ -389,20 +687,23 @@
         if (!resp.ok) {
           throw new Error(data.error || `HTTP ${resp.status}`);
         }
-        state.explanations[index] = data;
-        if (whyBox) {
+        state.explanations[key] = data;
+        if (whyBox && state.selected === index) {
           whyBox.replaceChildren(renderWhy(data));
         }
-        if (btn) {
+        if (btn && state.selected === index) {
           btn.textContent =
-            data.source === "llm" ? "Why? (cached)" : "Why?";
+            state.explanations[cacheKey(index, "llm")] ? "Why? (cached)" : "Why?";
         }
         if (offlineBtn) offlineBtn.textContent = "Offline explanation";
+        return data;
       } catch (e) {
-        if (err) err.textContent = e.message || String(e);
+        if (err && !opts.silent) err.textContent = e.message || String(e);
         if (mode === "llm") showOfflineButton(index);
-        if (btn) btn.textContent = "Why?";
+        if (btn) btn.textContent = state.explanations[cacheKey(index, "llm")] ? "Why? (cached)" : "Why?";
         if (offlineBtn) offlineBtn.textContent = "Offline explanation";
+        if (!opts.silent) throw e;
+        return null;
       } finally {
         if (btn) btn.disabled = false;
         const ob = document.getElementById("offline-btn");

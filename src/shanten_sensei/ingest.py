@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from shanten_sensei.features import extract_features
+from shanten_sensei.live import contrasted_dahai_tile
 from shanten_sensei.mjai_board import (
     EnrichmentIndex,
     build_enrichment_index,
@@ -111,6 +112,14 @@ def turn_from_entry(
         if c.action.startswith("dahai "):
             candidate_tiles.append(c.action.split(" ", 1)[1])
 
+    diverge = not bool(entry.get("is_equal", False))
+    alt_discard = contrasted_dahai_tile(
+        mortal_best=mortal_best,
+        player_action=player_action,
+        candidates=candidates,
+        diverge=diverge,
+    )
+
     features = extract_features(
         hand,
         calls=calls,
@@ -123,6 +132,7 @@ def turn_from_entry(
         genbutsu_tiles=genbutsu,
         context=context,
         ukeire_after_discard=discard_tile,
+        ukeire_alt_after_discard=alt_discard,
     )
 
     # Prefer Mortal's reported shanten when present
@@ -156,7 +166,7 @@ def turn_from_entry(
         features=features,
         player_action=player_action,
         mortal_best=mortal_best,
-        diverge=not bool(entry.get("is_equal", False)),
+        diverge=diverge,
     )
 
 

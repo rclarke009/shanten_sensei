@@ -60,23 +60,56 @@ def hand_without_discard(hand: list[str], discard: str) -> list[str]:
     raise ValueError(f"discard {discard!r} not in hand {hand}")
 
 
+def collect_visible_tiles(
+    *,
+    visible_discards: dict[str, list[str]] | None = None,
+    discards: list[str] | None = None,
+    calls: list[dict] | None = None,
+    dora_indicators: list[str] | None = None,
+) -> list[str]:
+    """Tiles already visible outside the closed hand (rivers, calls, dora indicators)."""
+    out: list[str] = []
+    rivers: list[str] = []
+    if visible_discards:
+        for river in visible_discards.values():
+            rivers.extend(river)
+    if rivers:
+        out.extend(rivers)
+    elif discards:
+        out.extend(discards)
+    out.extend(_tiles_from_calls(calls or []))
+    out.extend(dora_indicators or [])
+    return out
+
+
 def calculate_ukeire(
     hand: list[str],
     num_melds: int = 0,
     *,
     after_discard: str | None = None,
+    visible_tiles: list[str] | None = None,
 ) -> UkeireInfo:
     """Tiles that strictly reduce shanten when drawn; count remaining copies (≤4).
 
     For a 14-tile hand, pass ``after_discard`` (usually Mortal's pick) so ukeire
     is computed on the resulting 13-tile shape.
+
+    When ``visible_tiles`` is provided (rivers / calls / dora indicators), remaining
+    copies subtract those as well as tiles already in the working hand.
     """
     working_tiles = (
         hand_without_discard(hand, after_discard) if after_discard else list(hand)
     )
     working = tiles_to_34_array(working_tiles)
+    visible_outside = [0] * 34
+    for tile in visible_tiles or []:
+        try:
+            visible_outside[tile_to_34(tile)] += 1
+        except ValueError:
+            continue
     current = _shanten_with_melds(working, num_melds)
     improving: list[str] = []
+    remaining_by_tile: dict[str, int] = {}
     remaining = 0
     for idx in range(34):
         if working[idx] >= 4:
@@ -85,9 +118,16 @@ def calculate_ukeire(
         new_sh = _shanten_with_melds(working, num_melds)
         working[idx] -= 1
         if new_sh < current:
-            improving.append(tile_from_34(idx))
-            remaining += 4 - working[idx]
-    return UkeireInfo(count=remaining, tiles=improving)
+            tile = tile_from_34(idx)
+            left = max(0, 4 - working[idx] - visible_outside[idx])
+            improving.append(tile)
+            remaining_by_tile[tile] = left
+            remaining += left
+    return UkeireInfo(
+        count=remaining,
+        tiles=improving,
+        remaining_by_tile=remaining_by_tile,
+    )
 
 
 def wait_tiles_if_tenpai(hand: list[str], num_melds: int = 0) -> list[str]:
@@ -171,6 +211,123 @@ def basic_danger_tags(
     return tags
 
 
+# Deterministic shape/yaku tags — verbalize only; never claim Mortal "aims for" these.
+SHAPE_GOAL_TAGS = frozenset(
+    {"tanyao", "yakuhai", "honitsu", "chinitsu", "toitoi", "chiitoi"}
+)
+_DRAGONS = frozenset({"P", "F", "C"})
+_WINDS = frozenset({"E", "S", "W", "N"})
+
+
+def _is_terminal_or_honor(tile: str) -> bool:
+    base = deaka(normalize_tile(tile))
+    if base in _DRAGONS or base in _WINDS:
+        return True
+    return len(base) >= 2 and base[0] in "19" and base[1] in "mps"
+
+
+def _suit_of(tile: str) -> str | None:
+    base = deaka(normalize_tile(tile))
+    if len(base) >= 2 and base[0].isdigit() and base[1] in "mps":
+        return base[1]
+    return None
+
+
+def _tiles_from_calls(calls: list[dict]) -> list[str]:
+    """Best-effort tile extraction from mjai / reviewer fuuro dicts."""
+    out: list[str] = []
+    for call in calls:
+        if not isinstance(call, dict):
+            continue
+        for key in ("pai", "tiles"):
+            val = call.get(key)
+            if isinstance(val, str):
+                out.append(val)
+            elif isinstance(val, list):
+                out.extend(t for t in val if isinstance(t, str))
+        consumed = call.get("consumed")
+        if isinstance(consumed, list):
+            out.extend(t for t in consumed if isinstance(t, str))
+    return out
+
+
+def infer_shape_goals(
+    hand: list[str],
+    *,
+    calls: list[dict] | None = None,
+    context: dict | None = None,
+    max_goals: int = 3,
+) -> list[str]:
+    """Conservative mid-game yaku/shape tags from the closed hand (+ calls).
+
+    Prefer under-tagging. Tags describe hand shape, not Mortal's internal plan.
+    """
+    calls = calls or []
+    context = context or {}
+    all_tiles = list(hand) + _tiles_from_calls(calls)
+    if not all_tiles:
+        return []
+
+    counts = tiles_to_34_array(hand)
+    menzen = len(calls) == 0
+    goals: list[str] = []
+
+    # Flush family
+    suit_counts = {"m": 0, "p": 0, "s": 0}
+    honor_count = 0
+    for tile in all_tiles:
+        suit = _suit_of(tile)
+        if suit:
+            suit_counts[suit] += 1
+        else:
+            honor_count += 1
+    dominant_suit = max(suit_counts, key=suit_counts.get)  # type: ignore[arg-type]
+    dominant_n = suit_counts[dominant_suit]
+    other_suit_n = sum(n for s, n in suit_counts.items() if s != dominant_suit)
+    if other_suit_n == 0 and honor_count == 0 and dominant_n >= 11:
+        goals.append("chinitsu")
+    elif other_suit_n == 0 and dominant_n >= 11:
+        goals.append("honitsu")
+
+    # Tanyao: no terminals/honors in hand or calls
+    if all_tiles and not any(_is_terminal_or_honor(t) for t in all_tiles):
+        goals.append("tanyao")
+
+    # Yakuhai: pair/triplet of dragon, or seat/round wind when context provides them
+    yakuhai_tiles = set(_DRAGONS)
+    for key in ("bakaze", "jikaze", "round_wind", "seat_wind"):
+        val = context.get(key)
+        if isinstance(val, str):
+            wind = deaka(normalize_tile(val))
+            if wind in _WINDS:
+                yakuhai_tiles.add(wind)
+    for tile in yakuhai_tiles:
+        if counts[tile_to_34(tile)] >= 2:
+            goals.append("yakuhai")
+            break
+
+    # Chiitoi: only closed; strictly better than regular (under-tag)
+    if menzen and sum(counts) in (13, 14):
+        chiitoi_sh = _SHANTEN.calculate_shanten_for_chiitoitsu_hand(list(counts))
+        regular_sh = _SHANTEN.calculate_shanten_for_regular_hand(list(counts))
+        if chiitoi_sh < regular_sh and chiitoi_sh <= 3:
+            goals.append("chiitoi")
+
+    # Toitoi: strong pair/triplet density (conservative)
+    pairish = sum(1 for c in counts if c >= 2)
+    triplets = sum(1 for c in counts if c >= 3)
+    if (triplets >= 2 and pairish >= 4) or (pairish >= 5 and triplets >= 1):
+        goals.append("toitoi")
+
+    # Prefer chinitsu over honitsu; cap length
+    if "chinitsu" in goals and "honitsu" in goals:
+        goals = [g for g in goals if g != "honitsu"]
+    # Stable priority: flush → tanyao → yakuhai → chiitoi → toitoi
+    priority = ["chinitsu", "honitsu", "tanyao", "yakuhai", "chiitoi", "toitoi"]
+    ordered = [g for g in priority if g in goals]
+    return ordered[:max_goals]
+
+
 def extract_features(
     hand: list[str],
     *,
@@ -186,26 +343,54 @@ def extract_features(
     genbutsu_tiles: list[str] | None = None,
     context: dict | None = None,
     ukeire_after_discard: str | None = None,
+    ukeire_alt_after_discard: str | None = None,
 ) -> DerivedFeatures:
     calls = calls or []
     discards = discards or []
     dora_indicators = dora_indicators or []
     num_melds = len(calls)
     menzen = num_melds == 0
+    hand_total = sum(tiles_to_34_array(hand)) + num_melds * 3
+    is_14 = hand_total % 3 == 2
+
+    visible_tiles = collect_visible_tiles(
+        visible_discards=visible_discards,
+        discards=discards,
+        calls=calls,
+        dora_indicators=dora_indicators,
+    )
 
     shanten = calculate_shanten(hand, num_melds)
     # Prefer ukeire / waits on the post-discard shape when we have 14 tiles.
     shape_hand = hand
-    if ukeire_after_discard is not None and (sum(tiles_to_34_array(hand)) + num_melds * 3) % 3 == 2:
-        shape_hand = hand_without_discard(hand, ukeire_after_discard)
+    mortal_discard = ukeire_after_discard if is_14 else None
+    if mortal_discard is not None:
+        shape_hand = hand_without_discard(hand, mortal_discard)
     shape_shanten = calculate_shanten(shape_hand, num_melds)
     ukeire = calculate_ukeire(
         hand,
         num_melds,
-        after_discard=ukeire_after_discard
-        if (sum(tiles_to_34_array(hand)) + num_melds * 3) % 3 == 2
-        else None,
+        after_discard=mortal_discard,
+        visible_tiles=visible_tiles,
     )
+    ukeire_alt: UkeireInfo | None = None
+    alt_discard = ukeire_alt_after_discard
+    if alt_discard is not None and is_14:
+        same_cut = (
+            mortal_discard is not None
+            and deaka(normalize_tile(alt_discard))
+            == deaka(normalize_tile(mortal_discard))
+        )
+        if not same_cut:
+            try:
+                ukeire_alt = calculate_ukeire(
+                    hand,
+                    num_melds,
+                    after_discard=alt_discard,
+                    visible_tiles=visible_tiles,
+                )
+            except ValueError:
+                ukeire_alt = None
     waits = (
         wait_tiles_if_tenpai(shape_hand, num_melds) if shape_shanten == 0 else []
     )
@@ -235,12 +420,20 @@ def extract_features(
         genbutsu_tiles=genbutsu_tiles,
     )
 
+    shape_goals = infer_shape_goals(
+        shape_hand,
+        calls=calls,
+        context=context,
+    )
+
     return DerivedFeatures(
         shanten=shanten,
         ukeire=ukeire,
+        ukeire_alt=ukeire_alt,
         statuses=statuses,
         danger=danger,
         context=context or {},
+        shape_goals=shape_goals,
     )
 
 
