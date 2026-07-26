@@ -1,4 +1,6 @@
 from shanten_sensei.features import (
+    basic_danger_tags,
+    build_score_situation,
     calculate_shanten,
     calculate_ukeire,
     classify_wait_shape,
@@ -91,3 +93,52 @@ def test_extract_features_visible_rivers_and_ukeire_alt():
     assert feats.ukeire.remaining_by_tile["4s"] == 1
     assert feats.ukeire_alt is not None
     assert feats.ukeire_alt.count != feats.ukeire.count
+
+
+def test_danger_suji_from_river_discard():
+    tags = basic_danger_tags(
+        ["1m", "7m", "6m"],
+        visible_discards={"1": ["4m"]},
+    )
+    assert tags.get("1m") == "suji"
+    assert tags.get("7m") == "suji"
+    assert "6m" not in tags
+
+
+def test_danger_one_chance_from_visible_middle():
+    tags = basic_danger_tags(
+        ["4p", "6p", "2p"],
+        visible_tiles=["5p", "5p", "5p"],
+    )
+    assert tags.get("4p") == "one-chance"
+    assert tags.get("6p") == "one-chance"
+    assert "2p" not in tags
+
+
+def test_danger_genbutsu_beats_suji():
+    tags = basic_danger_tags(
+        ["1m"],
+        visible_discards={"1": ["4m", "1m"]},
+    )
+    assert tags.get("1m") == "genbutsu"
+
+
+def test_build_score_situation_trailing_late():
+    sit = build_score_situation(
+        scores=[20000, 28000, 25000, 27000],
+        riichi_flags=[False, True, False, False],
+        tiles_left=24,
+        kyoku=3,
+    )
+    assert sit is not None
+    assert sit.riichi_opponents == 1
+    assert sit.score_diff == "trailing"
+    assert sit.late_game is True
+
+
+def test_build_score_situation_even_no_flags():
+    sit = build_score_situation(scores=[25000, 25000, 25000, 25000])
+    assert sit is not None
+    assert sit.score_diff == "even"
+    assert sit.riichi_opponents == 0
+    assert sit.late_game is False

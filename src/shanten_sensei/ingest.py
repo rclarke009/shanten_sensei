@@ -8,7 +8,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from shanten_sensei.features import extract_features
+from shanten_sensei.features import (
+    attach_score_situation,
+    build_call_tradeoff,
+    extract_features,
+)
 from shanten_sensei.live import contrasted_dahai_tile
 from shanten_sensei.mjai_board import (
     EnrichmentIndex,
@@ -21,7 +25,13 @@ from shanten_sensei.schema import (
     MortalOutput,
     TurnExplainInput,
 )
-from shanten_sensei.tiles import action_to_label, normalize_tile
+from shanten_sensei.tiles import (
+    action_tile_arg,
+    action_to_label,
+    is_call_action,
+    is_call_decision_action,
+    normalize_tile,
+)
 
 
 @dataclass(frozen=True)
@@ -141,6 +151,41 @@ def turn_from_entry(
         features.statuses.shanten = int(entry["shanten"])
         features.statuses.tenpai = int(entry["shanten"]) == 0
 
+    call_action = None
+    call_consumed: list[str] | None = None
+    for action_dict in (expected, actual):
+        label = action_to_label(action_dict)
+        if is_call_action(label):
+            call_action = label
+            consumed = action_dict.get("consumed")
+            if isinstance(consumed, list) and consumed:
+                call_consumed = [normalize_tile(str(t)) for t in consumed]
+            break
+    if call_action is None:
+        for c in candidates:
+            if is_call_action(c.action):
+                call_action = c.action
+                break
+    entry_tile = entry.get("tile")
+    call_tile = (
+        action_tile_arg(call_action)
+        if call_action
+        else None
+    ) or (normalize_tile(str(entry_tile)) if entry_tile else None)
+    if call_action and any(
+        is_call_decision_action(a)
+        for a in (mortal_best, player_action, *(c.action for c in candidates))
+    ):
+        features.call_tradeoff = build_call_tradeoff(
+            hand,
+            calls=calls,
+            stay_closed_shanten=features.shanten,
+            stay_closed_ukeire=features.ukeire.count,
+            call_action=call_action,
+            consumed=call_consumed,
+            call_tile=call_tile,
+        )
+
     game_state = GameState(
         hand=hand,
         calls=calls,
@@ -153,6 +198,7 @@ def turn_from_entry(
         scores=kyoku_meta.get("relative_scores"),
         kyoku=kyoku_meta.get("kyoku"),
     )
+    attach_score_situation(features, game_state)
 
     mortal_output = MortalOutput(
         recommended=mortal_best,

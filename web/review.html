@@ -119,6 +119,33 @@
     }
     .chip.on { color: var(--text); border-color: #4d5d6d; }
     .chip.warn { color: var(--warn); border-color: #6a5530; }
+    .aiming-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem 0.75rem;
+      align-items: baseline;
+      margin: 0 0 0.75rem;
+      padding: 0.45rem 0.7rem;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font-size: 0.9rem;
+    }
+    .aiming-row .label {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+    }
+    .aiming-row .value { color: var(--text); flex: 1 1 auto; min-width: 12rem; }
+    .aiming-row a {
+      color: var(--accent);
+      font-size: 0.85rem;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .aiming-row a:hover { text-decoration: underline; }
     .section-label {
       font-family: var(--mono);
       font-size: 0.7rem;
@@ -424,15 +451,20 @@
       const s = d.statuses || {};
       const chips = [];
       chips.push({ text: s.menzen ? "closed" : "open", on: true });
-      if (s.tenpai) {
-        chips.push({ text: "ready (tenpai)", on: true });
+      if (s.tenpai || (s.shanten ?? d.shanten) === 0) {
+        chips.push({ text: d.shanten_label || "tenpai (ready)", on: true });
       } else {
-        const n = s.shanten ?? d.shanten;
-        chips.push({ text: `${n}-shanten`, on: true });
+        chips.push({
+          text: d.shanten_label || `${s.shanten ?? d.shanten}-shanten`,
+          on: true,
+        });
       }
-      chips.push({ text: `ukeire ${d.ukeire ?? "–"}`, on: true });
-      const wait = d.wait_shape || s.wait_shape;
-      if (wait) chips.push({ text: `wait ${wait}`, on: true });
+      chips.push({
+        text: `ukeire ${d.ukeire ?? "–"} (improving tiles)`,
+        on: true,
+      });
+      const waitLabel = d.wait_shape_label || d.wait_shape || s.wait_shape;
+      if (waitLabel) chips.push({ text: `wait ${waitLabel}`, on: true });
       chips.push({
         text: s.furiten ? "furiten" : "not furiten",
         on: !!s.furiten,
@@ -442,7 +474,7 @@
       if (s.riichi) chips.push({ text: "riichi", on: true });
       if (s.ippatsu) chips.push({ text: "ippatsu", on: true });
       if (s.dora_in_hand && s.dora_in_hand.length) {
-        chips.push({ text: `dora ${s.dora_in_hand.join(" ")}`, on: true });
+        chips.push({ text: `dora (bonus tile) ${s.dora_in_hand.join(" ")}`, on: true });
       }
       if (s.visible_dora && s.visible_dora.length) {
         chips.push({ text: `indicators ${s.visible_dora.join(" ")}`, on: true });
@@ -453,6 +485,13 @@
         }
       }
       return chips;
+    }
+
+    function actionLabel(d, which) {
+      if (which === "mortal") {
+        return d.mortal_best_label || d.mortal_best || "–";
+      }
+      return d.player_action_label || d.player_action || "–";
     }
 
     function renderList() {
@@ -468,7 +507,11 @@
           },
           el("div", { className: "id" }, `E${d.index}`),
           el("div", { className: "loc" }, formatLoc(d)),
-          el("div", { className: "actions" }, `${d.mortal_best}  vs  ${d.player_action}`)
+          el(
+            "div",
+            { className: "actions" },
+            `${actionLabel(d, "mortal")}  vs  ${actionLabel(d, "player")}`
+          )
         );
         list.append(btn);
       }
@@ -481,7 +524,7 @@
       ensureOfflineExplanation(index);
     }
 
-    function moveChip(kind, title, action) {
+    function moveChip(kind, title, action, display) {
       const tile = actionTile(action);
       const chip = el(
         "div",
@@ -489,7 +532,7 @@
         el("span", { className: "label" }, title)
       );
       if (tile) chip.append(makeTile(tile, kind, { small: true }));
-      chip.append(el("span", { className: "action" }, action || "–"));
+      chip.append(el("span", { className: "action" }, display || action || "–"));
       return chip;
     }
 
@@ -518,12 +561,32 @@
         );
       }
 
+      const aiming = el(
+        "div",
+        { className: "aiming-row" },
+        el("span", { className: "label" }, "Aiming for"),
+        el("span", { className: "value" }, d.aiming_for || "no clear yaku shape yet")
+      );
+      if (d.yaku_reference_url) {
+        aiming.append(
+          el(
+            "a",
+            {
+              href: d.yaku_reference_url,
+              target: "_blank",
+              rel: "noopener noreferrer",
+            },
+            d.yaku_reference_label || "Yaku list"
+          )
+        );
+      }
+
       const moves = el(
         "div",
         { className: "moves" },
-        moveChip("mortal", "Mortal", d.mortal_best),
+        moveChip("mortal", "Mortal", d.mortal_best, d.mortal_best_label),
         el("span", { className: "move-vs" }, "vs"),
-        moveChip("player", "You", d.player_action)
+        moveChip("player", "You", d.player_action, d.player_action_label)
       );
 
       const whyBox = el("div", { id: "why-box" });
@@ -595,6 +658,7 @@
           el("span", { className: "loc" }, formatLoc(d))
         ),
         strip,
+        aiming,
         moves,
         el("div", { className: "section-label" }, "Explanation"),
         el("div", { className: "why-actions" }, whyBtn, offlineWrap),

@@ -7,14 +7,21 @@ from collections import Counter
 from mahjong.shanten import Shanten
 
 from shanten_sensei.schema import (
+    CallTradeoff,
     DerivedFeatures,
+    GameState,
     HandStatuses,
+    ScoreDiff,
+    ScoreSituation,
     UkeireInfo,
     WaitShape,
 )
 from shanten_sensei.tiles import (
+    action_tile_arg,
     deaka,
+    is_call_action,
     normalize_tile,
+    parse_action_kind,
     tile_from_34,
     tile_to_34,
     tiles_to_34_array,
@@ -58,6 +65,90 @@ def hand_without_discard(hand: list[str], discard: str) -> list[str]:
             out.pop(i)
             return out
     raise ValueError(f"discard {discard!r} not in hand {hand}")
+
+
+def simulate_shanten_after_call(
+    hand: list[str],
+    call_action: str,
+    *,
+    num_melds: int = 0,
+    consumed: list[str] | None = None,
+    call_tile: str | None = None,
+) -> int | None:
+    """Shanten after pon/chi/kan when consumables are known; else None."""
+    kind = parse_action_kind(call_action)
+    if kind not in ("pon", "chi", "kan"):
+        return None
+
+    working = list(hand)
+    tile = action_tile_arg(call_action) or (
+        normalize_tile(call_tile) if call_tile else None
+    )
+
+    try:
+        if kind == "pon":
+            if not tile:
+                return None
+            to_remove = (
+                [normalize_tile(t) for t in consumed[:2]]
+                if consumed and len(consumed) >= 2
+                else [tile, tile]
+            )
+            for t in to_remove:
+                working = hand_without_discard(working, t)
+            return calculate_shanten(working, num_melds + 1)
+
+        if kind == "chi":
+            if not consumed or len(consumed) < 2:
+                return None
+            for t in consumed[:2]:
+                working = hand_without_discard(working, t)
+            return calculate_shanten(working, num_melds + 1)
+
+        # kan: remove 3 from hand (daiminkan) when we know the tile
+        if not tile:
+            return None
+        to_remove = (
+            [normalize_tile(t) for t in consumed[:3]]
+            if consumed and len(consumed) >= 3
+            else [tile, tile, tile]
+        )
+        for t in to_remove:
+            working = hand_without_discard(working, t)
+        return calculate_shanten(working, num_melds + 1)
+    except ValueError:
+        return None
+
+
+def build_call_tradeoff(
+    hand: list[str],
+    *,
+    calls: list[dict] | None = None,
+    stay_closed_shanten: int,
+    stay_closed_ukeire: int,
+    call_action: str | None,
+    consumed: list[str] | None = None,
+    call_tile: str | None = None,
+) -> CallTradeoff | None:
+    """Build open-vs-closed tradeoff when a call action is in play."""
+    if not call_action or not is_call_action(call_action):
+        return None
+    num_melds = len(calls or [])
+    menzen = num_melds == 0
+    open_shanten = simulate_shanten_after_call(
+        hand,
+        call_action,
+        num_melds=num_melds,
+        consumed=consumed,
+        call_tile=call_tile,
+    )
+    return CallTradeoff(
+        call_action=call_action,
+        stay_closed_shanten=stay_closed_shanten,
+        stay_closed_ukeire=stay_closed_ukeire,
+        open_shanten=open_shanten,
+        opens_hand=menzen,
+    )
 
 
 def collect_visible_tiles(
@@ -192,23 +283,126 @@ def is_furiten(waits: list[str], discards: list[str]) -> bool:
     return bool(wait_set & discard_set)
 
 
+_DANGER_RANK = {"genbutsu": 3, "one-chance": 2, "suji": 1}
+
+
+def _number_suit(tile: str) -> tuple[int, str] | None:
+    base = deaka(normalize_tile(tile))
+    if len(base) >= 2 and base[0].isdigit() and base[1] in "mps":
+        return int(base[0]), base[1]
+    return None
+
+
+def _suji_mates(tile: str) -> list[str]:
+    """Tiles that form classic 3-interval suji with a number discard."""
+    parsed = _number_suit(tile)
+    if parsed is None:
+        return []
+    n, suit = parsed
+    mates: list[str] = []
+    for m in (n - 3, n + 3):
+        if 1 <= m <= 9:
+            mates.append(f"{m}{suit}")
+    return mates
+
+
 def basic_danger_tags(
     candidate_tiles: list[str],
     visible_discards: dict[str, list[str]] | None = None,
     genbutsu_tiles: list[str] | None = None,
+    visible_tiles: list[str] | None = None,
 ) -> dict[str, str]:
-    """Minimal danger labels for verbalization. Prefer caller-supplied genbutsu."""
+    """Danger labels for verbalization: genbutsu > one-chance > suji."""
     tags: dict[str, str] = {}
     gen = {deaka(normalize_tile(t)) for t in (genbutsu_tiles or [])}
+    rivers: list[str] = []
     if visible_discards:
         for disc in visible_discards.values():
+            rivers.extend(disc)
             gen.update(deaka(normalize_tile(t)) for t in disc)
+
+    suji: set[str] = set()
+    for disc in rivers:
+        suji.update(_suji_mates(disc))
+
+    visible = visible_tiles
+    if visible is None:
+        visible = collect_visible_tiles(visible_discards=visible_discards)
+    counts = Counter(deaka(normalize_tile(t)) for t in visible)
+    one_chance: set[str] = set()
+    for tile, n in counts.items():
+        if n < 3:
+            continue
+        parsed = _number_suit(tile)
+        if parsed is None:
+            continue
+        mid, suit = parsed
+        for adj in (mid - 1, mid + 1):
+            if 1 <= adj <= 9:
+                one_chance.add(f"{adj}{suit}")
 
     for tile in candidate_tiles:
         base = deaka(normalize_tile(tile))
         if base in gen:
             tags[base] = "genbutsu"
+        elif base in one_chance:
+            tags[base] = "one-chance"
+        elif base in suji:
+            tags[base] = "suji"
     return tags
+
+
+def danger_rank(tag: str | None) -> int:
+    """Higher = safer teaching tag (genbutsu > one-chance > suji)."""
+    if not tag:
+        return 0
+    return _DANGER_RANK.get(tag, 0)
+
+
+def build_score_situation(
+    *,
+    scores: list[int] | None = None,
+    riichi_flags: list[bool] | None = None,
+    tiles_left: int | None = None,
+    kyoku: int | None = None,
+) -> ScoreSituation | None:
+    """Point-situation facts from scores / opponent riichi / late wall."""
+    flags = list(riichi_flags or [])
+    riichi_opponents = sum(1 for f in flags[1:] if f) if flags else 0
+
+    score_diff: ScoreDiff | None = None
+    if scores and len(scores) >= 2:
+        player = scores[0]
+        best_opp = max(scores[1:])
+        delta = player - best_opp
+        if abs(delta) <= 3000:
+            score_diff = "even"
+        elif delta > 0:
+            score_diff = "leading"
+        else:
+            score_diff = "trailing"
+
+    late_game = (tiles_left is not None and tiles_left <= 30) or (
+        kyoku is not None and kyoku >= 7
+    )
+
+    if riichi_opponents == 0 and score_diff is None and not late_game:
+        return None
+    return ScoreSituation(
+        riichi_opponents=riichi_opponents,
+        score_diff=score_diff,
+        late_game=late_game,
+    )
+
+
+def attach_score_situation(features: DerivedFeatures, state: GameState) -> None:
+    """Fill features.score_situation from game_state fields."""
+    features.score_situation = build_score_situation(
+        scores=state.scores,
+        riichi_flags=state.riichi_flags,
+        tiles_left=state.tiles_left,
+        kyoku=state.kyoku,
+    )
 
 
 # Deterministic shape/yaku tags — verbalize only; never claim Mortal "aims for" these.
@@ -418,6 +612,7 @@ def extract_features(
         candidate_tiles or [],
         visible_discards=visible_discards,
         genbutsu_tiles=genbutsu_tiles,
+        visible_tiles=visible_tiles,
     )
 
     shape_goals = infer_shape_goals(

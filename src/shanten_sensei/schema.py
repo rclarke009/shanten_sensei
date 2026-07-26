@@ -33,6 +33,27 @@ class UkeireInfo(BaseModel):
     )
 
 
+class CallTradeoff(BaseModel):
+    """Stay-closed vs open contrast for skip/pon/chii tips."""
+
+    call_action: str
+    stay_closed_shanten: int
+    stay_closed_ukeire: int
+    open_shanten: int | None = None
+    opens_hand: bool = True
+
+
+ScoreDiff = Literal["leading", "trailing", "even"]
+
+
+class ScoreSituation(BaseModel):
+    """Point-situation facts for push/fold / late-game coaching."""
+
+    riichi_opponents: int = 0
+    score_diff: ScoreDiff | None = None
+    late_game: bool = False
+
+
 class GameState(BaseModel):
     hand: list[str]
     calls: list[dict[str, Any]] = Field(default_factory=list)
@@ -72,6 +93,14 @@ class DerivedFeatures(BaseModel):
     shape_goals: list[str] = Field(
         default_factory=list,
         description="Likely yaku/shape tags from heuristics (not Mortal intent)",
+    )
+    call_tradeoff: CallTradeoff | None = Field(
+        default=None,
+        description="Open vs closed tradeoff when tip is skip/pon/chii/kan",
+    )
+    score_situation: ScoreSituation | None = Field(
+        default=None,
+        description="Relative scores / opponent riichi / late-game flags",
     )
 
 

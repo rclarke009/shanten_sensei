@@ -11,8 +11,16 @@ from typing import Any, Callable, Literal
 from urllib.parse import parse_qs, urlparse
 
 from shanten_sensei.explain import explain_llm, template_explain, validate_explanation
+from shanten_sensei.glosses import (
+    YAKU_REFERENCE_LABEL,
+    YAKU_REFERENCE_URL,
+    format_aiming_for,
+    glossed_shanten,
+    glossed_wait,
+)
 from shanten_sensei.ingest import DivergeTurn, diverge_turns_from_path, load_json
 from shanten_sensei.schema import Explanation, TurnExplainInput
+from shanten_sensei.tiles import coach_action_label
 
 EXPLAIN_PATH_RE = re.compile(r"^/api/explain/(\d+)$")
 ExplainSource = Literal["llm", "template"]
@@ -107,6 +115,8 @@ class ReviewSession:
     def _diverge_summary(d: DivergeTurn) -> dict[str, Any]:
         turn = d.turn
         statuses = turn.features.statuses
+        wait_shape = statuses.wait_shape
+        shanten = turn.features.shanten
         return {
             "index": d.index,
             "kyoku": d.kyoku,
@@ -114,13 +124,21 @@ class ReviewSession:
             "junme": d.junme,
             "mortal_best": turn.mortal_best,
             "player_action": turn.player_action,
-            "shanten": turn.features.shanten,
+            "mortal_best_label": coach_action_label(turn.mortal_best),
+            "player_action_label": coach_action_label(turn.player_action),
+            "shanten": shanten,
+            "shanten_label": glossed_shanten(shanten),
             "ukeire": turn.features.ukeire.count,
             "ukeire_tiles": list(turn.features.ukeire.tiles),
             "ukeire_remaining": dict(turn.features.ukeire.remaining_by_tile),
             "hand": list(turn.game_state.hand),
             "calls": list(turn.game_state.calls),
-            "wait_shape": statuses.wait_shape,
+            "wait_shape": wait_shape,
+            "wait_shape_label": glossed_wait(wait_shape),
+            "shape_goals": list(turn.features.shape_goals),
+            "aiming_for": format_aiming_for(turn.features.shape_goals),
+            "yaku_reference_url": YAKU_REFERENCE_URL,
+            "yaku_reference_label": YAKU_REFERENCE_LABEL,
             "statuses": statuses.model_dump(),
             "danger": turn.features.danger,
         }

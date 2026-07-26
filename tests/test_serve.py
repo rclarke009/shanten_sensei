@@ -59,12 +59,22 @@ def test_api_review_list_no_explanations(session_and_server):
     assert isinstance(first.get("ukeire_remaining"), dict)
     assert isinstance(first["calls"], list)
     assert first.get("wait_shape") is not None or first["statuses"].get("wait_shape") is not None
+    assert "aiming_for" in first
+    assert "shape_goals" in first
+    assert first["mortal_best_label"]
+    assert first["player_action_label"]
+    assert first["shanten_label"]
+    assert first.get("yaku_reference_url", "").startswith("http")
+    if first.get("wait_shape"):
+        assert first.get("wait_shape_label")
+        assert "(" in first["wait_shape_label"]
     assert "explanation" not in first
     for d in data["diverges"]:
         assert "explanation" not in d
         assert "hand" in d
         assert "ukeire_tiles" in d
         assert "calls" in d
+        assert "aiming_for" in d
 
 
 def test_api_explain_caches_and_pins(session_and_server):

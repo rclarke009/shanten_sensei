@@ -5,18 +5,36 @@ from __future__ import annotations
 import json
 import os
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
 
-from shanten_sensei.live import next_best_action
+from shanten_sensei.features import danger_rank
+from shanten_sensei.glosses import DANGER_GLOSS as _DANGER_GLOSS
+from shanten_sensei.glosses import GOAL_GLOSS as _GOAL_GLOSS
+from shanten_sensei.glosses import WAIT_GLOSS as _WAIT_GLOSS
+from shanten_sensei.glosses import glossed_danger as _glossed_danger
+from shanten_sensei.glosses import glossed_goal as _glossed_goal
+from shanten_sensei.glosses import glossed_shanten as _glossed_shanten_phrase
+from shanten_sensei.glosses import glossed_wait as _glossed_wait
+from shanten_sensei.live import (
+    is_call_decision_turn,
+    is_riichi_decision_turn,
+    next_best_action,
+)
 from shanten_sensei.schema import Explanation, Focus, TurnExplainInput
 from shanten_sensei.tiles import (
+    action_tile_arg,
+    coach_action_label,
     deaka,
     human_action_label,
     human_tile_label,
+    is_call_action,
+    is_riichi_decision_action,
     normalize_tile,
+    parse_action_kind,
 )
 
 ALLOWED_FOCUS = frozenset({"efficiency", "defense", "value", "tempo", "mixed"})
@@ -28,32 +46,90 @@ provided. You do not invent better moves. If the player’s move differs, say wh
 Mortal’s choice is better in efficiency, safety, or point situation. If this is \
 a live pre-decision turn (diverge is false / player_action equals mortal_best), \
 explain why Mortal’s top pick beats the next-best candidate. One or two \
-sentences. Plain English. Prefer concrete tile language from tile_glossary \
-(e.g. 🀅Hatsu, 🀔5-sou, ryanmen wait). Never use bare honor letters F/C/P or \
-bare suit codes like 5s when naming tiles for the player. \
-Never recommend an action other than mortal_best.
+sentences. Plain English. Never open with \"Mortal recommends\" or \
+\"Mortal prefers\". Never use bare honor letters F/C/P or bare suit codes like \
+5s when naming tiles for the player. Never recommend an action other than \
+mortal_best.
+
+For discard tips, lead with \"Throw X\" or \"Throw X, not Y\" using \
+tile_glossary / coach_action labels (e.g. 🀅Hatsu, 🀔5-sou).
+
+For call tips (mortal_best or contrast is none / pon / chi / kan — see \
+call_tradeoff), lead with \"Skip\" / \"Skip the pon on …\" / \
+\"Call pon on …, don’t skip\" — never \"Throw none\" or \"Throw pon\". Cite \
+call_tradeoff when present: opening loses riichi; open_shanten vs stay-closed \
+shanten; shape_goals (e.g. still aiming for tanyao while holding terminals).
+
+For riichi tips (riichi_decision true — reach vs none), lead with \
+\"Declare riichi\" / \"Stay silent\" — never \"Throw reach\" or \"Skip\". Cite \
+tenpai / wait shape, furiten_blocking_tiles, dora_in_hand, or score_situation.
+
+When danger tags a safer cut (genbutsu / suji / one-chance with \
+danger_glossary parentheticals), prefer a defense sentence over bare \
+efficiency. When score_situation is present, you may add one short point-situation \
+line (opponent riichi, leading/trailing/even, late wall).
 
 Do not justify Mortal by restating its probability percentages or by saying \
 \"more efficient\" / \"higher chance\" alone. Prefer one concrete fact from the \
 payload: shanten/acceptances (with hand_metric_glossary parentheticals), ukeire \
-tiles / remaining_by_tile, ukeire_alt, wall_note, wait shape, shape_goals \
-(with glossary parentheticals), or dora. The chart already shows Mortal % — \
-leave percentages out of the summary.
+tiles / remaining_by_tile, ukeire_alt, wall_note, wait shape (with \
+wait_shape_glossary parentheticals, e.g. \"ryanmen (two-sided open)\"), \
+shape_goals (with glossary parentheticals), furiten_blocking_tiles, \
+call_tradeoff, danger, score_situation, or dora. The chart already shows \
+Mortal % — leave percentages out of the summary.
 
 You may cite ukeire.remaining_by_tile or ukeire_alt for visible wall depletion \
-or live-acceptance contrast (e.g. tiles already out; more live acceptances \
-than the alternate cut). Prefer wall_note when present. Never invent unseen \
-wall math, opponent-hand contents, or discard reasons not supported by those \
-fields.
+or improving-tile contrast (e.g. tiles already out; about N improving tiles \
+left vs about M if you throw the alternate). Prefer wall_note facts when \
+present, rephrased in the same plain voice — do not paste jargon like \
+\"live acceptances\". Never invent unseen wall math, opponent-hand contents, \
+or discard reasons not supported by those fields.
 
 If shape_goals is non-empty, you may name only those goals as likely hand shape \
-(not as Mortal’s internal plan). When you name a goal or dora, include the short \
-parenthetical from shape_goal_glossary (e.g. \"tanyao (2–8 only; no 1/9, winds, \
-or dragons)\", \"dora (bonus tile)\"). When you mention shanten or acceptances, \
-include the short parenthetical from hand_metric_glossary (e.g. \"3-shanten \
-(3 steps from ready)\", \"acceptances (tiles that improve the hand)\"). Never \
+(not as Mortal’s internal plan). Prefer \"fits tanyao (…)\" over \"shape leans\". \
+When you name a goal or dora, include the short parenthetical from \
+shape_goal_glossary (e.g. \"tanyao (2–8 only; no 1/9, winds, or dragons)\", \
+\"yakuhai (triplet of dragon or your seat/round wind)\", \"dora (bonus tile)\"). \
+When you mention shanten or acceptances, include the short parenthetical from \
+hand_metric_glossary (e.g. \"3-shanten (3 steps from ready)\", \
+\"acceptances (tiles that improve the hand)\"). If wall_note already contrasts \
+improving-tile counts, do not also restate the absolute acceptance count. Never \
 invent other yaku. You may mention dora only when statuses.dora_in_hand is \
 non-empty.
+
+When shape_goals includes yakuhai, always explain with a short because clause \
+from yakuhai_pairs / yakuhai_singleton_value_tiles (e.g. you’re holding a pair \
+of East for that; 1-man isn’t a value tile, while Chun can still pair). Never \
+say an alternate \"would not help … aiming for yakuhai\" without naming those \
+tile facts.
+
+Example discard voice: \"Throw West. That leaves about 55 tiles that can \
+improve your hand, vs about 41 if you throw 7-sou. That fits tanyao (2–8 only; \
+no 1/9, winds, or dragons)—West can’t stay in that hand.\"
+
+Example yakuhai voice: \"Throw 1-man, not Chun. That fits yakuhai (triplet of \
+dragon or your seat/round wind)—you’re holding a pair of East for that; 1-man \
+isn’t a value tile, while Chun can still pair.\"
+
+When statuses.wait_shape is set, name it with the wait_shape_glossary \
+parenthetical (e.g. \"ryanmen (two-sided open) wait\"). When statuses.furiten \
+is true, name furiten_blocking_tiles if present (tiles you already discarded \
+that are also waits) and note this is defense, not a win this turn.
+
+Example tenpai voice: \"Throw 4-man, not 6-man. That keeps a ryanmen \
+(two-sided open) wait. You’re furiten on 7-sou—you already discarded it—so \
+this is for defense, not a win this turn.\"
+
+Example call voice: \"Skip the pon on 3-sou. You’re still 2-shanten (2 steps \
+from ready) closed with about 55 improving tiles. Calling would open the \
+hand—no riichi—while you’re still aiming for tanyao (2–8 only; no 1/9, winds, \
+or dragons) and holding terminals.\"
+
+Example defense voice: \"Throw 4-man, not 6-man—it's suji (interval-safe vs a \
+common wait). 6-man isn't. An opponent is in riichi—safety matters.\"
+
+Example riichi voice: \"Declare riichi. You’re tenpai (ready) with a ryanmen \
+(two-sided open) wait and dora (bonus tile) in hand.\"
 
 Return JSON with exactly these keys:
 - summary: string (1–2 sentences of coach text)
@@ -92,32 +168,12 @@ _YAKU_MENTION_PATTERNS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("dora", (r"\bdora\b",)),
 )
 
-_GOAL_GLOSS: dict[str, str] = {
-    "tanyao": "2–8 only; no 1/9, winds, or dragons",
-    "yakuhai": "dragon or seat/round wind",
-    "honitsu": "one suit + winds/dragons OK",
-    "chinitsu": "one suit only",
-    "toitoi": "all triplets",
-    "chiitoi": "seven pairs",
-}
 _DORA_GLOSS = "bonus tile"
 _ACCEPTANCES_GLOSS = "tiles that improve the hand"
 
 
-def _glossed_goal(tag: str) -> str:
-    gloss = _GOAL_GLOSS.get(tag)
-    return f"{tag} ({gloss})" if gloss else tag
-
-
 def _glossed_dora_phrase(tile_label: str) -> str:
     return f"dora ({_DORA_GLOSS}) {tile_label}"
-
-
-def _glossed_shanten_phrase(shanten: int) -> str:
-    if shanten <= 0:
-        return "tenpai (ready)"
-    step = "step" if shanten == 1 else "steps"
-    return f"{shanten}-shanten ({shanten} {step} from ready)"
 
 
 def _glossed_acceptances_phrase(count: int) -> str:
@@ -153,7 +209,11 @@ def _turn_has_usable_anchors(turn: TurnExplainInput) -> bool:
         return True
     if turn.features.statuses.dora_in_hand:
         return True
-    if any(v == "genbutsu" for v in turn.features.danger.values()):
+    if turn.features.call_tradeoff is not None:
+        return True
+    if turn.features.danger:
+        return True
+    if turn.features.score_situation is not None:
         return True
     if _wall_facts_available(turn):
         return True
@@ -170,11 +230,16 @@ def _feature_anchors_in_summary(turn: TurnExplainInput, summary_l: str) -> list[
         re.search(r"\balready out\b", summary_l)
         or re.search(r"\bleft in the wall\b", summary_l)
         or re.search(r"\blive acceptances?\b", summary_l)
+        or re.search(r"\bimproving tiles\b", summary_l)
         or re.search(r"\b\d+\s*[×x]\b", summary_l)
     )
     if (
         re.search(r"\bacceptances?\b", summary_l)
         or re.search(r"\bukeire\b", summary_l)
+        or (
+            re.search(r"\bimproving tiles\b", summary_l)
+            and re.search(r"\bvs about\b", summary_l)
+        )
         or (_wall_facts_available(turn) and wall_lang)
     ):
         anchors.append("ukeire")
@@ -191,10 +256,39 @@ def _feature_anchors_in_summary(turn: TurnExplainInput, summary_l: str) -> list[
     if turn.features.statuses.dora_in_hand and re.search(r"\bdora\b", summary_l):
         anchors.append("dora")
 
-    if any(v == "genbutsu" for v in turn.features.danger.values()) and re.search(
-        r"\bgenbutsu\b", summary_l
+    if turn.features.danger and (
+        re.search(r"\bgenbutsu\b", summary_l)
+        or re.search(r"\bsuji\b", summary_l)
+        or re.search(r"\bone-chance\b", summary_l)
+        or re.search(r"\bone chance\b", summary_l)
     ):
         anchors.append("danger")
+
+    if turn.features.call_tradeoff is not None and (
+        re.search(r"\bskip\b", summary_l)
+        or re.search(r"\bcall\b", summary_l)
+        or re.search(r"\bopen\b", summary_l)
+        or re.search(r"\briichi\b", summary_l)
+    ):
+        anchors.append("call_tradeoff")
+
+    sit = turn.features.score_situation
+    if sit is not None and (
+        re.search(r"\briichi\b", summary_l)
+        or re.search(r"\bleading\b", summary_l)
+        or re.search(r"\btrailing\b", summary_l)
+        or re.search(r"\bsafety\b", summary_l)
+        or re.search(r"\blate\b", summary_l)
+        or re.search(r"\bwall\b", summary_l)
+        or re.search(r"\bpoints?\b", summary_l)
+    ):
+        anchors.append("score_situation")
+
+    if is_riichi_decision_turn(turn) and (
+        re.search(r"\bdeclare riichi\b", summary_l)
+        or re.search(r"\bstay silent\b", summary_l)
+    ):
+        anchors.append("riichi_decision")
 
     return anchors
 
@@ -213,8 +307,8 @@ def score_explanation_substance(turn: TurnExplainInput, summary: str) -> Substan
     return SubstanceScore(thin=thin, anchors=anchors, issues=issues)
 
 
-def wall_note(turn: TurnExplainInput) -> str | None:
-    """Short grounded wall-depletion / live-ukeire contrast, or None if not meaningful."""
+def _wall_note_detail(turn: TurnExplainInput) -> tuple[str | None, str | None]:
+    """Return (kind, text): kind is 'contrast' | 'thin', or (None, None)."""
     ukeire = turn.features.ukeire
     remaining = ukeire.remaining_by_tile
     thin = [(t, n) for t, n in remaining.items() if n <= 1]
@@ -227,8 +321,11 @@ def wall_note(turn: TurnExplainInput) -> str | None:
             alt_action = next_best_action(turn)
         alt_label = human_action_label(alt_action) if alt_action else "the alternate cut"
         return (
-            f"keeps more live acceptances (~{ukeire.count} vs ~{alt.count} "
-            f"after cutting {alt_label})"
+            "contrast",
+            (
+                f"about {ukeire.count} improving tiles left vs about {alt.count} "
+                f"if you throw {alt_label}"
+            ),
         )
 
     if thin:
@@ -237,10 +334,16 @@ def wall_note(turn: TurnExplainInput) -> str | None:
         label = human_tile_label(tile)
         detail = f"{label} already out" if n <= 0 else f"only {n}× {label} left"
         if len(thin) >= 2:
-            return f"several improving tiles are already out ({detail})"
-        return f"improving tiles are thinning ({detail})"
+            return "thin", f"several improving tiles are already out ({detail})"
+        return "thin", f"improving tiles are thinning ({detail})"
 
-    return None
+    return None, None
+
+
+def wall_note(turn: TurnExplainInput) -> str | None:
+    """Short grounded wall-depletion / improving-tile contrast, or None if not meaningful."""
+    _kind, text = _wall_note_detail(turn)
+    return text
 
 
 def build_user_payload(turn: TurnExplainInput) -> dict[str, Any]:
@@ -250,14 +353,27 @@ def build_user_payload(turn: TurnExplainInput) -> dict[str, Any]:
     }
     next_best = next_best_action(turn)
     note = wall_note(turn)
+    call_decision = is_call_decision_turn(turn)
+    riichi_decision = is_riichi_decision_turn(turn)
+    coach_labels = call_decision or riichi_decision
+
+    def _display(action: str) -> str:
+        if riichi_decision and action.strip() == "none":
+            return "Stay silent"
+        if coach_labels:
+            return coach_action_label(action)
+        return human_action_label(action)
+
     return {
         "player_action": turn.player_action,
         "mortal_best": turn.mortal_best,
         "next_best": next_best,
-        "player_action_display": human_action_label(turn.player_action),
-        "mortal_best_display": human_action_label(turn.mortal_best),
-        "next_best_display": human_action_label(next_best) if next_best else None,
+        "player_action_display": _display(turn.player_action),
+        "mortal_best_display": _display(turn.mortal_best),
+        "next_best_display": _display(next_best) if next_best else None,
         "diverge": turn.diverge,
+        "call_decision": call_decision,
+        "riichi_decision": riichi_decision,
         "mortal_scores": scores,
         "hand": turn.game_state.hand,
         "tile_glossary": _tile_glossary_for_turn(turn, next_best),
@@ -275,6 +391,11 @@ def build_user_payload(turn: TurnExplainInput) -> dict[str, Any]:
             **{g: _GOAL_GLOSS[g] for g in turn.features.shape_goals if g in _GOAL_GLOSS},
             "dora": _DORA_GLOSS,
         },
+        "wait_shape_glossary": (
+            {turn.features.statuses.wait_shape: _WAIT_GLOSS[turn.features.statuses.wait_shape]}
+            if turn.features.statuses.wait_shape in _WAIT_GLOSS
+            else {}
+        ),
         "hand_metric_glossary": {
             "shanten": (
                 "ready"
@@ -286,8 +407,32 @@ def build_user_payload(turn: TurnExplainInput) -> dict[str, Any]:
             ),
             "acceptances": _ACCEPTANCES_GLOSS,
         },
+        "call_tradeoff": (
+            turn.features.call_tradeoff.model_dump()
+            if turn.features.call_tradeoff is not None
+            else None
+        ),
+        "score_situation": (
+            turn.features.score_situation.model_dump()
+            if turn.features.score_situation is not None
+            else None
+        ),
         "danger": turn.features.danger,
+        "danger_glossary": {
+            tag: _DANGER_GLOSS[tag]
+            for tag in sorted(set(turn.features.danger.values()))
+            if tag in _DANGER_GLOSS
+        },
         "context": turn.features.context,
+        "yakuhai_pairs": _yakuhai_pair_labels(
+            turn.game_state.hand, turn.features.context
+        ),
+        "yakuhai_singleton_value_tiles": _yakuhai_singleton_value_labels(
+            turn.game_state.hand, turn.features.context
+        ),
+        "furiten_blocking_tiles": [
+            human_tile_label(t) for t in _furiten_blocking_tiles(turn)
+        ],
     }
 
 
@@ -314,15 +459,153 @@ def _action_display(action: str) -> str:
 
 
 def _action_tile_token_raw(action: str | None) -> str | None:
-    if not action or not action.startswith("dahai "):
+    if not action:
         return None
-    return action.split(" ", 1)[1]
+    return action_tile_arg(action)
 
 
 def _danger_key(tile: str | None) -> str | None:
     if not tile:
         return None
     return deaka(normalize_tile(tile))
+
+
+_HONORS = frozenset({"E", "S", "W", "N", "P", "F", "C"})
+_DRAGONS = frozenset({"P", "F", "C"})
+_WINDS = frozenset({"E", "S", "W", "N"})
+_HONOR_ORDER = ("E", "S", "W", "N", "P", "F", "C")
+
+
+def _is_terminal_or_honor(tile: str) -> bool:
+    base = deaka(normalize_tile(tile))
+    if base in _HONORS:
+        return True
+    return len(base) >= 2 and base[0] in "19" and base[1] in "mps"
+
+
+def _sentence_case(text: str) -> str:
+    if not text:
+        return text
+    return text[0].upper() + text[1:]
+
+
+def _yakuhai_value_tiles(context: dict[str, Any] | None) -> set[str]:
+    """Dragons plus seat/round winds when context provides them."""
+    tiles = set(_DRAGONS)
+    for key in ("bakaze", "jikaze", "round_wind", "seat_wind"):
+        val = (context or {}).get(key)
+        if isinstance(val, str):
+            wind = deaka(normalize_tile(val))
+            if wind in _WINDS:
+                tiles.add(wind)
+    return tiles
+
+
+def _hand_tile_counts(hand: list[str]) -> Counter[str]:
+    counts: Counter[str] = Counter()
+    for tile in hand:
+        counts[deaka(normalize_tile(tile))] += 1
+    return counts
+
+
+def _yakuhai_pair_labels(
+    hand: list[str], context: dict[str, Any] | None
+) -> list[str]:
+    """Human labels for yakuhai-capable tiles held as a pair or triplet."""
+    value = _yakuhai_value_tiles(context)
+    counts = _hand_tile_counts(hand)
+    return [
+        human_tile_label(tile)
+        for tile in _HONOR_ORDER
+        if tile in value and counts.get(tile, 0) >= 2
+    ]
+
+
+def _yakuhai_singleton_value_labels(
+    hand: list[str], context: dict[str, Any] | None
+) -> list[str]:
+    """Human labels for yakuhai-capable tiles held as a singleton."""
+    value = _yakuhai_value_tiles(context)
+    counts = _hand_tile_counts(hand)
+    return [
+        human_tile_label(tile)
+        for tile in _HONOR_ORDER
+        if tile in value and counts.get(tile, 0) == 1
+    ]
+
+
+def _yakuhai_because_clause(
+    turn: TurnExplainInput,
+    best_raw: str | None,
+    alt_raw: str | None,
+) -> str | None:
+    """Short em-dash clause naming which tiles support the yakuhai shape."""
+    if "yakuhai" not in turn.features.shape_goals:
+        return None
+    hand = turn.game_state.hand
+    context = turn.features.context
+    value = _yakuhai_value_tiles(context)
+    counts = _hand_tile_counts(hand)
+    held: list[str] = []
+    for tile in _HONOR_ORDER:
+        if tile not in value:
+            continue
+        n = counts.get(tile, 0)
+        if n >= 3:
+            held.append(f"a triplet of {human_tile_label(tile)}")
+        elif n >= 2:
+            held.append(f"a pair of {human_tile_label(tile)}")
+    if not held:
+        return None
+    if len(held) == 1:
+        bits = [f"you’re holding {held[0]} for that"]
+    else:
+        bits = [f"you’re holding {' and '.join(held)} for that"]
+    if best_raw:
+        best_norm = deaka(normalize_tile(best_raw))
+        if best_norm not in value:
+            bits.append(f"{human_tile_label(best_raw)} isn’t a value tile")
+    if alt_raw:
+        alt_norm = deaka(normalize_tile(alt_raw))
+        if alt_norm in value:
+            label = human_tile_label(alt_raw)
+            n = counts.get(alt_norm, 0)
+            if n >= 2:
+                bits.append(f"while {label} is already a pair")
+            elif n >= 1:
+                bits.append(f"while {label} can still pair")
+    return "—" + "; ".join(bits)
+
+
+def _furiten_blocking_tiles(turn: TurnExplainInput) -> list[str]:
+    """Wait tiles already in the player's discard river (mjai codes)."""
+    waits = {deaka(normalize_tile(w)) for w in turn.features.ukeire.tiles}
+    if not waits:
+        return []
+    discards = {deaka(normalize_tile(d)) for d in turn.game_state.discards}
+    return sorted(waits & discards)
+
+
+def _furiten_because_sentence(turn: TurnExplainInput) -> str | None:
+    """Name discarded wait tiles when furiten; defense, not a win this turn."""
+    if not turn.features.statuses.furiten:
+        return None
+    labels = [human_tile_label(t) for t in _furiten_blocking_tiles(turn)]
+    if not labels:
+        return (
+            "You’re furiten—you already discarded a wait tile—so this is for "
+            "defense, not a win this turn"
+        )
+    if len(labels) == 1:
+        named = labels[0]
+        pronoun = "it"
+    else:
+        named = " and ".join(labels)
+        pronoun = "them"
+    return (
+        f"You’re furiten on {named}—you already discarded {pronoun}—so this "
+        "is for defense, not a win this turn"
+    )
 
 
 def _shape_goal_phrase(turn: TurnExplainInput) -> str | None:
@@ -334,53 +617,363 @@ def _shape_goal_phrase(turn: TurnExplainInput) -> str | None:
     if goals:
         lean = " / ".join(_glossed_goal(g) for g in goals)
         if dora:
-            return f"shape leans {lean} with {_glossed_dora_phrase(human_tile_label(dora[0]))}"
-        return f"shape leans {lean}"
+            return f"fits {lean} with {_glossed_dora_phrase(human_tile_label(dora[0]))}"
+        return f"fits {lean}"
     # Dora only — still useful value signal
     return f"keeping {_glossed_dora_phrase(human_tile_label(dora[0]))}"
 
 
-def template_explain(turn: TurnExplainInput) -> Explanation:
-    """Deterministic offline explainer for tests / no API key."""
+def _call_skip_lead(call_action: str | None) -> str:
+    """Lead sentence when Mortal prefers Skip over a call."""
+    if not call_action:
+        return "Skip"
+    kind = parse_action_kind(call_action)
+    tile = action_tile_arg(call_action)
+    if kind == "pon":
+        if tile:
+            return f"Skip the pon on {human_tile_label(tile)}"
+        return "Skip the pon"
+    if kind == "chi":
+        if tile:
+            return f"Skip the chi on {human_tile_label(tile)}"
+        return "Skip the chi"
+    if kind == "kan":
+        if tile:
+            return f"Skip the kan on {human_tile_label(tile)}"
+        return "Skip the kan"
+    return "Skip"
+
+
+def _hand_has_terminals_or_honors(hand: list[str]) -> bool:
+    return any(_is_terminal_or_honor(t) for t in hand)
+
+
+def _score_situation_sentence(turn: TurnExplainInput) -> tuple[str | None, Focus | None]:
+    """At most one point-situation sentence; optional focus nudge."""
+    sit = turn.features.score_situation
+    if sit is None:
+        return None, None
+
+    best_code = _danger_key(_action_tile_token_raw(turn.mortal_best))
+    best_tag = turn.features.danger.get(best_code) if best_code else None
+    best_safe = danger_rank(best_tag) > 0
+
+    if sit.riichi_opponents > 0:
+        if sit.score_diff == "leading" and best_safe:
+            return "You’re ahead and an opponent is in riichi—safety matters", "defense"
+        return "An opponent is in riichi—safety matters", "defense"
+
+    if sit.late_game and sit.score_diff == "trailing":
+        if is_riichi_decision_action(turn.mortal_best):
+            return "You’re trailing late—this riichi fights for points", "value"
+        return "You’re trailing late—value matters more than slow builds", "value"
+
+    if sit.late_game and sit.score_diff == "leading" and best_safe:
+        return "You’re leading late—safer cuts protect the lead", "defense"
+
+    return None, None
+
+
+def _append_score_situation(
+    sentences: list[str], focus: Focus, turn: TurnExplainInput
+) -> Focus:
+    bit, nudge = _score_situation_sentence(turn)
+    if not bit:
+        return focus
+    sentences.append(bit)
+    if nudge is None:
+        return focus
+    if focus == "efficiency":
+        return nudge
+    if nudge != focus:
+        return "mixed"
+    return focus
+
+
+def _danger_compare_sentences(
+    turn: TurnExplainInput,
+    *,
+    best_tile: str,
+    player_tile: str,
+    best_code: str | None,
+    player_code: str | None,
+    player: str,
+    best: str,
+) -> tuple[list[str], Focus | None]:
+    """Defense sentences from danger tag ranks; optional focus nudge."""
+    danger = turn.features.danger
+    best_tag = danger.get(best_code) if best_code else None
+    player_tag = danger.get(player_code) if player_code else None
+    best_r = danger_rank(best_tag)
+    player_r = danger_rank(player_tag)
+    out: list[str] = []
+    nudge: Focus | None = None
+
+    if best_r > player_r and best_tag:
+        glossed = _glossed_danger(best_tag) or best_tag
+        if player != best and player_code:
+            out.append(f"{best_tile} is {glossed}. {player_tile} isn't")
+        else:
+            out.append(f"{best_tile} is {glossed}")
+        nudge = "defense"
+    elif player_tag and player != best and player_r >= best_r:
+        glossed = _glossed_danger(player_tag) or player_tag
+        out.append(f"{player_tile} is {glossed} but efficiency is worse")
+        nudge = "mixed"
+    elif best_tag:
+        glossed = _glossed_danger(best_tag) or best_tag
+        out.append(f"{best_tile} is also {glossed}")
+        nudge = "defense"
+
+    return out, nudge
+
+
+def _template_explain_call(turn: TurnExplainInput) -> Explanation:
+    """Skip / Call coach voice with open-vs-closed tradeoffs."""
     best = turn.mortal_best
     player = turn.player_action
     shanten = turn.features.shanten
     ukeire = turn.features.ukeire
-    danger = turn.features.danger
+    tradeoff = turn.features.call_tradeoff
+    alt = next_best_action(turn)
+
+    focus: Focus = "efficiency"
+    sentences: list[str] = []
+    contrasted: str | None = None
+
+    if turn.diverge and player != best:
+        contrasted = player
+    elif alt and alt != best:
+        contrasted = alt
+
+    best_kind = parse_action_kind(best)
+    call_side = None
+    if is_call_action(best):
+        call_side = best
+    elif contrasted and is_call_action(contrasted):
+        call_side = contrasted
+    elif tradeoff is not None:
+        call_side = tradeoff.call_action
+
+    if best_kind == "none":
+        sentences.append(_call_skip_lead(call_side))
+    else:
+        label = coach_action_label(best)
+        if contrasted and parse_action_kind(contrasted) == "none":
+            sentences.append(f"{label}, don’t skip")
+        else:
+            sentences.append(label)
+
+    if shanten is not None:
+        sentences.append(
+            f"You’re {_glossed_shanten_phrase(shanten)} closed with "
+            f"about {ukeire.count} improving tiles"
+        )
+
+    if best_kind == "none":
+        if tradeoff is not None and tradeoff.opens_hand:
+            open_note = "Calling would open the hand—no riichi"
+            if (
+                tradeoff.open_shanten is not None
+                and tradeoff.open_shanten >= tradeoff.stay_closed_shanten
+            ):
+                open_note += ", and it doesn’t get you closer to ready"
+            sentences.append(open_note)
+        if "tanyao" in turn.features.shape_goals and _hand_has_terminals_or_honors(
+            turn.game_state.hand
+        ):
+            sentences.append(
+                f"You’re still aiming for {_glossed_goal('tanyao')} and holding terminals"
+            )
+        else:
+            goal_bit = _shape_goal_phrase(turn)
+            if goal_bit:
+                if goal_bit.startswith("fits"):
+                    sentences.append(f"That {goal_bit}")
+                else:
+                    sentences.append(_sentence_case(goal_bit))
+    else:
+        tile = action_tile_arg(best)
+        dragons = frozenset({"P", "F", "C"})
+        if parse_action_kind(best) == "pon" and tile and (
+            "yakuhai" in turn.features.shape_goals or tile in dragons
+        ):
+            sentences.append("That locks a yakuhai triplet")
+            focus = "value"
+        if (
+            tradeoff is not None
+            and tradeoff.open_shanten is not None
+            and tradeoff.open_shanten < tradeoff.stay_closed_shanten
+        ):
+            sentences.append("That gets you closer than staying closed")
+            if focus == "efficiency":
+                focus = "tempo"
+        goal_bit = _shape_goal_phrase(turn)
+        if goal_bit:
+            if goal_bit.startswith("fits"):
+                sentences.append(f"That {goal_bit}")
+            else:
+                sentences.append(_sentence_case(goal_bit))
+
+    furiten_bit = _furiten_because_sentence(turn)
+    if furiten_bit:
+        sentences.append(furiten_bit)
+        focus = "defense" if focus == "efficiency" else "mixed"
+
+    focus = _append_score_situation(sentences, focus, turn)
+
+    summary = ". ".join(s.rstrip(".") for s in sentences) + "."
+    return Explanation(
+        summary=summary,
+        focus=focus,
+        pinned_action=best,
+        contrasted_action=contrasted,
+    )
+
+
+def _template_explain_riichi(turn: TurnExplainInput) -> Explanation:
+    """Declare riichi / Stay silent coach voice."""
+    best = turn.mortal_best
+    player = turn.player_action
+    statuses = turn.features.statuses
+    alt = next_best_action(turn)
+
+    focus: Focus = "tempo"
+    sentences: list[str] = []
+    contrasted: str | None = None
+
+    if turn.diverge and player != best:
+        contrasted = player
+    elif alt and alt != best:
+        contrasted = alt
+
+    best_kind = parse_action_kind(best)
+    if best_kind == "none":
+        sentences.append("Stay silent")
+        if contrasted and is_riichi_decision_action(contrasted):
+            sentences[-1] = "Stay silent—don’t declare riichi yet"
+        focus = "defense"
+    else:
+        label = coach_action_label(best)
+        if contrasted and parse_action_kind(contrasted) == "none":
+            sentences.append(f"{label}, don’t stay silent")
+        else:
+            sentences.append(label)
+
+    if statuses.tenpai or turn.features.shanten == 0:
+        wait = _glossed_wait(statuses.wait_shape)
+        if wait:
+            sentences.append(f"You’re tenpai (ready) with a {wait} wait")
+        else:
+            sentences.append("You’re tenpai (ready)")
+    elif turn.features.shanten is not None:
+        sentences.append(f"You’re {_glossed_shanten_phrase(turn.features.shanten)}")
+
+    if statuses.dora_in_hand and best_kind == "reach":
+        sentences.append("You have dora (bonus tile) in hand")
+        focus = "value"
+
+    furiten_bit = _furiten_because_sentence(turn)
+    if furiten_bit:
+        sentences.append(furiten_bit)
+        focus = "defense" if focus in ("efficiency", "tempo") else "mixed"
+
+    tiles_left = turn.game_state.tiles_left
+    if (
+        best_kind == "reach"
+        and tiles_left is not None
+        and tiles_left <= 30
+        and not furiten_bit
+    ):
+        sentences.append("The wall is getting thin")
+
+    focus = _append_score_situation(sentences, focus, turn)
+
+    summary = ". ".join(s.rstrip(".") for s in sentences) + "."
+    return Explanation(
+        summary=summary,
+        focus=focus,
+        pinned_action=best,
+        contrasted_action=contrasted,
+    )
+
+
+def template_explain(turn: TurnExplainInput) -> Explanation:
+    """Deterministic offline explainer for tests / no API key."""
+    if is_call_decision_turn(turn):
+        return _template_explain_call(turn)
+    if is_riichi_decision_turn(turn):
+        return _template_explain_riichi(turn)
+
+    best = turn.mortal_best
+    player = turn.player_action
+    shanten = turn.features.shanten
+    ukeire = turn.features.ukeire
     wait_shape = turn.features.statuses.wait_shape
 
     best_tile = _action_display(best)
     player_tile = _action_display(player)
-    best_code = _danger_key(_action_tile_token_raw(best))
+    best_raw = _action_tile_token_raw(best)
+    best_code = _danger_key(best_raw)
     player_code = _danger_key(_action_tile_token_raw(player))
     alt = next_best_action(turn)
     alt_tile = _action_display(alt) if alt else None
 
     focus: Focus = "efficiency"
-    bits: list[str] = []
+    sentences: list[str] = []
     contrasted: str | None = None
 
     if turn.diverge and player != best:
-        bits.append(f"Mortal prefers {best_tile} over {player_tile}")
+        sentences.append(f"Throw {best_tile}, not {player_tile}")
         contrasted = player
     elif alt and alt != best:
-        bits.append(f"Mortal prefers {best_tile} over {alt_tile}")
+        sentences.append(f"Throw {best_tile}, not {alt_tile}")
         contrasted = alt
     else:
-        bits.append(f"Mortal recommends {best_tile}")
+        sentences.append(f"Throw {best_tile}")
+
+    note_kind, note = _wall_note_detail(turn)
 
     if wait_shape:
-        bits.append(f"keeping a {wait_shape} wait shape")
+        wait_label = _glossed_wait(wait_shape) or wait_shape
+        sentences.append(f"That keeps a {wait_label} wait")
         focus = "efficiency"
+        if note_kind == "contrast" and note:
+            sentences.append(f"That leaves {note}")
+        elif note:
+            sentences.append(_sentence_case(note))
+    elif note_kind == "contrast" and note:
+        if shanten is not None:
+            sentences.append(f"You’re {_glossed_shanten_phrase(shanten)}")
+        sentences.append(f"That leaves {note}")
     elif shanten is not None:
-        bits.append(
-            f"you’re {_glossed_shanten_phrase(shanten)} with "
+        sentences.append(
+            f"You’re {_glossed_shanten_phrase(shanten)} with "
             f"{_glossed_acceptances_phrase(ukeire.count)}"
         )
+        if note:
+            sentences.append(_sentence_case(note))
+    elif note:
+        sentences.append(_sentence_case(note))
 
     goal_bit = _shape_goal_phrase(turn)
     if goal_bit:
-        bits.append(goal_bit)
+        if goal_bit.startswith("fits"):
+            shape_sentence = f"That {goal_bit}"
+        else:
+            shape_sentence = _sentence_case(goal_bit)
+        if (
+            "tanyao" in turn.features.shape_goals
+            and best_raw
+            and _is_terminal_or_honor(best_raw)
+        ):
+            shape_sentence += f"—{best_tile} can’t stay in that hand"
+        else:
+            alt_raw = _action_tile_token_raw(contrasted) if contrasted else None
+            yakuhai_bit = _yakuhai_because_clause(turn, best_raw, alt_raw)
+            if yakuhai_bit:
+                shape_sentence += yakuhai_bit
+        sentences.append(shape_sentence)
         if turn.features.shape_goals or turn.features.statuses.dora_in_hand:
             if focus == "efficiency" and (
                 "yakuhai" in turn.features.shape_goals
@@ -388,19 +981,39 @@ def template_explain(turn: TurnExplainInput) -> Explanation:
             ):
                 focus = "value"
 
-    player_danger = danger.get(player_code) if player_code else None
-    if player_danger == "genbutsu" and player != best:
-        bits.append(f"{player_tile} is genbutsu-safe but efficiency is worse")
+    furiten_bit = _furiten_because_sentence(turn)
+    if furiten_bit:
+        sentences.append(furiten_bit)
+        focus = "defense" if focus == "efficiency" else "mixed"
+
+    contrast_tile = player_tile
+    contrast_code = player_code
+    contrast_action = player
+    if contrasted and contrasted != player:
+        contrast_tile = _action_display(contrasted)
+        contrast_code = _danger_key(_action_tile_token_raw(contrasted))
+        contrast_action = contrasted
+
+    danger_bits, danger_nudge = _danger_compare_sentences(
+        turn,
+        best_tile=best_tile,
+        player_tile=contrast_tile,
+        best_code=best_code,
+        player_code=contrast_code,
+        player=contrast_action,
+        best=best,
+    )
+    sentences.extend(danger_bits)
+    if danger_nudge == "defense":
+        focus = "defense" if focus == "efficiency" else (
+            focus if focus == "defense" else "mixed"
+        )
+    elif danger_nudge == "mixed":
         focus = "mixed"
-    elif best_code and danger.get(best_code) == "genbutsu":
-        bits.append(f"{best_tile} is also genbutsu")
-        focus = "defense"
 
-    note = wall_note(turn)
-    if note:
-        bits.append(note)
+    focus = _append_score_situation(sentences, focus, turn)
 
-    summary = "; ".join(bits) + "."
+    summary = ". ".join(s.rstrip(".") for s in sentences) + "."
     return Explanation(
         summary=summary,
         focus=focus,
@@ -433,8 +1046,10 @@ def validate_explanation(turn: TurnExplainInput, explanation: Explanation) -> li
         and other != pin_token
         and re.search(rf"\b(?:discard|throw|cut)\s+{re.escape(other)}\b", summary_l)
         and not re.search(
-            rf"\b(?:instead of|rather than|over)\s+{re.escape(other)}\b", summary_l
+            rf"\b(?:instead of|rather than|over|not)\s+{re.escape(other)}\b",
+            summary_l,
         )
+        and not re.search(rf"\bif you throw\s+{re.escape(other)}\b", summary_l)
     ):
         errors.append("summary appears to recommend the player's tile over Mortal")
 
@@ -580,9 +1195,8 @@ def explanation_from_llm_data(turn: TurnExplainInput, data: dict[str, Any]) -> E
 
 
 def _action_tile_token(action: str) -> str | None:
-    if action.startswith("dahai "):
-        return action.split(" ", 1)[1].lower()
-    return None
+    tile = action_tile_arg(action)
+    return tile.lower() if tile else None
 
 
 _HONOR_ALIASES: dict[str, tuple[str, ...]] = {

@@ -148,6 +148,112 @@ def human_action_label(action: str) -> str:
     return action
 
 
+def parse_action_kind(action: str) -> str:
+    """Classify an action label: none / dahai / pon / chi / kan / reach / other."""
+    a = action.strip()
+    if a == "none":
+        return "none"
+    if a.startswith("dahai "):
+        return "dahai"
+    if a == "reach":
+        return "reach"
+    if a in ("chi_low", "chi_mid", "chi_high") or a.startswith("chi "):
+        return "chi"
+    if a == "pon" or a.startswith("pon "):
+        return "pon"
+    if a == "kan_select" or a.startswith(("daiminkan ", "kakan ", "ankan ")):
+        return "kan"
+    if a in ("daiminkan", "kakan", "ankan"):
+        return "kan"
+    return "other"
+
+
+def action_tile_arg(action: str) -> str | None:
+    """Tile argument for dahai/call labels when present (e.g. pon W → W)."""
+    parts = action.strip().split(" ", 1)
+    if len(parts) != 2:
+        return None
+    kind, raw = parts[0], parts[1]
+    if kind in ("dahai", "pon", "chi", "daiminkan", "kakan", "ankan"):
+        return normalize_tile(raw)
+    return None
+
+
+def is_call_action(action: str) -> bool:
+    return parse_action_kind(action) in ("pon", "chi", "kan")
+
+
+def is_call_decision_action(action: str) -> bool:
+    return action.strip() == "none" or is_call_action(action)
+
+
+def is_riichi_decision_action(action: str) -> bool:
+    return parse_action_kind(action) == "reach"
+
+
+def call_family(action: str) -> str | None:
+    """Family key for unifying bare meta codes with tile-bearing labels."""
+    kind = parse_action_kind(action)
+    if kind in ("none", "pon", "chi", "kan"):
+        return kind
+    return None
+
+
+def same_call_family(a: str, b: str) -> bool:
+    fa, fb = call_family(a), call_family(b)
+    return fa is not None and fa == fb
+
+
+def coach_action_label(action: str) -> str:
+    """Beginner coach phrasing: Skip / Call pon on West / Chi … / tile for dahai."""
+    kind = parse_action_kind(action)
+    tile = action_tile_arg(action)
+    if kind == "none":
+        return "Skip"
+    if kind == "pon":
+        if tile:
+            return f"Call pon on {human_tile_label(tile)}"
+        return "Call pon"
+    if kind == "chi":
+        if tile:
+            return f"Chi {human_tile_label(tile)}"
+        return "Chi"
+    if kind == "kan":
+        if tile:
+            return f"Call kan on {human_tile_label(tile)}"
+        return "Call kan"
+    if kind == "dahai":
+        return human_action_label(action)
+    if kind == "reach":
+        return "Declare riichi"
+    return human_action_label(action)
+
+
+def enrich_call_action_label(
+    action: str,
+    *,
+    call_tile: str | None = None,
+    preferred: str | None = None,
+) -> str:
+    """Attach a known call tile to bare meta codes (pon / chi_mid → pon 3s)."""
+    kind = parse_action_kind(action)
+    if kind not in ("pon", "chi", "kan"):
+        return action
+    if action_tile_arg(action) is not None:
+        return action
+    tile = None
+    if preferred and same_call_family(preferred, action):
+        tile = action_tile_arg(preferred)
+    tile = tile or (normalize_tile(call_tile) if call_tile else None)
+    if not tile:
+        return action
+    if kind == "pon":
+        return f"pon {tile}"
+    if kind == "chi":
+        return f"chi {tile}"
+    return f"daiminkan {tile}"
+
+
 def action_to_label(action: dict) -> str:
     """Compact label for prompts / pinning, e.g. 'dahai 5s'."""
     kind = action.get("type") or action.get("type_")
