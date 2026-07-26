@@ -2,6 +2,7 @@ from shanten_sensei.glosses import (
     DANGER_GLOSS,
     GOAL_GLOSS,
     NO_CLEAR_SHAPE,
+    SHAPE_NOTE_GLOSS,
     WAIT_GLOSS,
     YAKU_REFERENCE_URL,
     format_aiming_for,
@@ -57,3 +58,11 @@ def test_danger_gloss():
     assert glossed_danger("suji") == "suji (interval-safe vs a common wait)"
     assert glossed_danger("genbutsu") == "genbutsu (safe — already discarded)"
     assert glossed_danger(None) is None
+
+
+def test_shape_note_gloss():
+    assert "lone 1/9" in SHAPE_NOTE_GLOSS["floating_terminal"]
+    assert "closed middle" in SHAPE_NOTE_GLOSS["isolated_kanchan"]
+    assert "dead-end" in SHAPE_NOTE_GLOSS["dead_end"] or "connects" in SHAPE_NOTE_GLOSS[
+        "dead_end"
+    ]

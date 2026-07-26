@@ -68,6 +68,12 @@ def test_api_review_list_no_explanations(session_and_server):
     if first.get("wait_shape"):
         assert first.get("wait_shape_label")
         assert "(" in first["wait_shape_label"]
+    assert "danger_labels" in first
+    assert isinstance(first["danger_labels"], dict)
+    for tile, tag in (first.get("danger") or {}).items():
+        label = first["danger_labels"].get(tile, "")
+        assert tag in label
+        assert "(" in label  # glossed parenthetical
     assert "explanation" not in first
     for d in data["diverges"]:
         assert "explanation" not in d
@@ -75,6 +81,7 @@ def test_api_review_list_no_explanations(session_and_server):
         assert "ukeire_tiles" in d
         assert "calls" in d
         assert "aiming_for" in d
+        assert "danger_labels" in d
 
 
 def test_api_explain_caches_and_pins(session_and_server):

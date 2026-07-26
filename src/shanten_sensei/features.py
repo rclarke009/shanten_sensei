@@ -10,6 +10,7 @@ from shanten_sensei.schema import (
     CallTradeoff,
     DerivedFeatures,
     GameState,
+    HandShapeNote,
     HandStatuses,
     ScoreDiff,
     ScoreSituation,
@@ -445,6 +446,116 @@ def _tiles_from_calls(calls: list[dict]) -> list[str]:
     return out
 
 
+def _is_floating_terminal(counts: list[int], tile: str) -> bool:
+    base = deaka(normalize_tile(tile))
+    if not (len(base) >= 2 and base[0] in "19" and base[1] in "mps"):
+        return False
+    idx = tile_to_34(base)
+    if counts[idx] != 1:
+        return False
+    suit = base[1]
+    neighbor = f"2{suit}" if base[0] == "1" else f"8{suit}"
+    return counts[tile_to_34(neighbor)] == 0
+
+
+def _is_floating_honor(counts: list[int], tile: str) -> bool:
+    base = deaka(normalize_tile(tile))
+    if base not in _DRAGONS and base not in _WINDS:
+        return False
+    return counts[tile_to_34(base)] == 1
+
+
+def _is_isolated_kanchan_cut(counts: list[int], tile: str) -> bool:
+    """Cut is one end of an isolated kanchan taatsu (N + N+2, missing middle)."""
+    base = deaka(normalize_tile(tile))
+    if len(base) < 2 or not base[0].isdigit() or base[1] not in "mps":
+        return False
+    n = int(base[0])
+    suit = base[1]
+    if counts[tile_to_34(base)] != 1:
+        return False
+    for other_n, mid_n in ((n + 2, n + 1), (n - 2, n - 1)):
+        if other_n < 1 or other_n > 9:
+            continue
+        other = f"{other_n}{suit}"
+        mid = f"{mid_n}{suit}"
+        if counts[tile_to_34(other)] == 1 and counts[tile_to_34(mid)] == 0:
+            return True
+    return False
+
+
+def _is_isolated_penchan_cut(counts: list[int], tile: str) -> bool:
+    """Cut is from a lone 12 / 89 edge fragment."""
+    base = deaka(normalize_tile(tile))
+    if len(base) < 2 or not base[0].isdigit() or base[1] not in "mps":
+        return False
+    n = int(base[0])
+    suit = base[1]
+    if counts[tile_to_34(base)] != 1:
+        return False
+    if n in (1, 2):
+        has_1 = counts[tile_to_34(f"1{suit}")] >= 1
+        has_2 = counts[tile_to_34(f"2{suit}")] >= 1
+        has_3 = counts[tile_to_34(f"3{suit}")] >= 1
+        return has_1 and has_2 and not has_3 and n in (1, 2)
+    if n in (8, 9):
+        has_7 = counts[tile_to_34(f"7{suit}")] >= 1
+        has_8 = counts[tile_to_34(f"8{suit}")] >= 1
+        has_9 = counts[tile_to_34(f"9{suit}")] >= 1
+        return has_8 and has_9 and not has_7 and n in (8, 9)
+    return False
+
+
+def infer_hand_shape_notes(
+    hand: list[str],
+    *,
+    cut_tile: str | None,
+    shape_goals: list[str] | None = None,
+    shanten: int | None = None,
+    max_notes: int = 2,
+) -> list[HandShapeNote]:
+    """Conservative mid-hand tags for why Mortal's cut is dead wood.
+
+    Prefer under-tagging. Only fires before tenpai when a cut tile is known.
+    """
+    if not cut_tile:
+        return []
+    if shanten is not None and shanten <= 0:
+        return []
+
+    try:
+        base = deaka(normalize_tile(cut_tile))
+    except ValueError:
+        return []
+
+    counts = tiles_to_34_array(hand)
+    try:
+        if counts[tile_to_34(base)] < 1:
+            return []
+    except ValueError:
+        return []
+
+    goals = list(shape_goals or [])
+    notes: list[HandShapeNote] = []
+
+    if _is_isolated_kanchan_cut(counts, base):
+        notes.append(HandShapeNote(kind="isolated_kanchan", tile=base))
+    elif _is_isolated_penchan_cut(counts, base):
+        notes.append(HandShapeNote(kind="isolated_penchan", tile=base))
+    elif _is_floating_terminal(counts, base):
+        if goals:
+            notes.append(HandShapeNote(kind="floating_terminal", tile=base))
+        else:
+            notes.append(HandShapeNote(kind="dead_end", tile=base))
+    elif _is_floating_honor(counts, base):
+        if goals:
+            notes.append(HandShapeNote(kind="floating_honor", tile=base))
+        else:
+            notes.append(HandShapeNote(kind="dead_end", tile=base))
+
+    return notes[:max_notes]
+
+
 def infer_shape_goals(
     hand: list[str],
     *,
@@ -621,6 +732,15 @@ def extract_features(
         context=context,
     )
 
+    # Notes describe the cut tile in the pre-discard hand (14-tile when known).
+    note_hand = hand if is_14 and mortal_discard is not None else shape_hand
+    hand_shape_notes = infer_hand_shape_notes(
+        note_hand,
+        cut_tile=mortal_discard or ukeire_after_discard,
+        shape_goals=shape_goals,
+        shanten=statuses.shanten,
+    )
+
     return DerivedFeatures(
         shanten=shanten,
         ukeire=ukeire,
@@ -629,6 +749,7 @@ def extract_features(
         danger=danger,
         context=context or {},
         shape_goals=shape_goals,
+        hand_shape_notes=hand_shape_notes,
     )
 
 

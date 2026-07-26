@@ -14,6 +14,7 @@ import httpx
 from shanten_sensei.features import danger_rank
 from shanten_sensei.glosses import DANGER_GLOSS as _DANGER_GLOSS
 from shanten_sensei.glosses import GOAL_GLOSS as _GOAL_GLOSS
+from shanten_sensei.glosses import SHAPE_NOTE_GLOSS as _SHAPE_NOTE_GLOSS
 from shanten_sensei.glosses import WAIT_GLOSS as _WAIT_GLOSS
 from shanten_sensei.glosses import glossed_danger as _glossed_danger
 from shanten_sensei.glosses import glossed_goal as _glossed_goal
@@ -74,7 +75,8 @@ Do not justify Mortal by restating its probability percentages or by saying \
 payload: shanten/acceptances (with hand_metric_glossary parentheticals), ukeire \
 tiles / remaining_by_tile, ukeire_alt, wall_note, wait shape (with \
 wait_shape_glossary parentheticals, e.g. \"ryanmen (two-sided open)\"), \
-shape_goals (with glossary parentheticals), furiten_blocking_tiles, \
+shape_goals (with glossary parentheticals), hand_shape_notes (floating \
+terminal/honor, isolated kanchan/penchan, dead-end), furiten_blocking_tiles, \
 call_tradeoff, danger, score_situation, or dora. The chart already shows \
 Mortal % — leave percentages out of the summary.
 
@@ -105,7 +107,11 @@ tile facts.
 
 Example discard voice: \"Throw West. That leaves about 55 tiles that can \
 improve your hand, vs about 41 if you throw 7-sou. That fits tanyao (2–8 only; \
-no 1/9, winds, or dragons)—West can’t stay in that hand.\"
+no 1/9, winds, or dragons)—West is a floating honor outside tanyao.\"
+
+Example mid-hand voice: \"Throw 9-pin, not 5-sou. You’re 2-shanten (2 steps \
+from ready) with about 40 acceptances (tiles that improve the hand). 9-pin is \
+a floating terminal outside tanyao (2–8 only; no 1/9, winds, or dragons).\"
 
 Example yakuhai voice: \"Throw 1-man, not Chun. That fits yakuhai (triplet of \
 dragon or your seat/round wind)—you’re holding a pair of East for that; 1-man \
@@ -207,6 +213,8 @@ def _turn_has_usable_anchors(turn: TurnExplainInput) -> bool:
         return True
     if turn.features.shape_goals:
         return True
+    if turn.features.hand_shape_notes:
+        return True
     if turn.features.statuses.dora_in_hand:
         return True
     if turn.features.call_tradeoff is not None:
@@ -252,6 +260,17 @@ def _feature_anchors_in_summary(turn: TurnExplainInput, summary_l: str) -> list[
         if re.search(rf"\b{re.escape(goal)}\b", summary_l):
             anchors.append("shape_goal")
             break
+
+    if turn.features.hand_shape_notes and (
+        re.search(r"\bfloating\b", summary_l)
+        or re.search(r"\bdead-end\b", summary_l)
+        or re.search(r"\bdead end\b", summary_l)
+        or re.search(r"\bclosed middle\b", summary_l)
+        or re.search(r"\bedge\b", summary_l)
+        or re.search(r"\bkanchan\b", summary_l)
+        or re.search(r"\bpenchan\b", summary_l)
+    ):
+        anchors.append("hand_shape_note")
 
     if turn.features.statuses.dora_in_hand and re.search(r"\bdora\b", summary_l):
         anchors.append("dora")
@@ -387,6 +406,14 @@ def build_user_payload(turn: TurnExplainInput) -> dict[str, Any]:
         "wall_note": note,
         "statuses": turn.features.statuses.model_dump(),
         "shape_goals": list(turn.features.shape_goals),
+        "hand_shape_notes": [
+            n.model_dump() for n in turn.features.hand_shape_notes
+        ],
+        "hand_shape_note_glossary": {
+            n.kind: _SHAPE_NOTE_GLOSS[n.kind]
+            for n in turn.features.hand_shape_notes
+            if n.kind in _SHAPE_NOTE_GLOSS
+        },
         "shape_goal_glossary": {
             **{g: _GOAL_GLOSS[g] for g in turn.features.shape_goals if g in _GOAL_GLOSS},
             "dora": _DORA_GLOSS,
@@ -606,6 +633,57 @@ def _furiten_because_sentence(turn: TurnExplainInput) -> str | None:
         f"You’re furiten on {named}—you already discarded {pronoun}—so this "
         "is for defense, not a win this turn"
     )
+
+
+def _note_for_cut(turn: TurnExplainInput, cut_raw: str | None):
+    """Hand-shape note matching Mortal's cut tile, if any."""
+    if not cut_raw or not turn.features.hand_shape_notes:
+        return None
+    try:
+        cut = deaka(normalize_tile(cut_raw))
+    except ValueError:
+        return None
+    for note in turn.features.hand_shape_notes:
+        try:
+            if deaka(normalize_tile(note.tile)) == cut:
+                return note
+        except ValueError:
+            continue
+    return turn.features.hand_shape_notes[0]
+
+
+def _midhand_shape_clause(
+    turn: TurnExplainInput,
+    cut_raw: str | None,
+    cut_label: str,
+) -> str | None:
+    """Short clause/sentence for floating / isolated / dead-end cuts."""
+    note = _note_for_cut(turn, cut_raw)
+    if note is None:
+        return None
+    goals = [g for g in turn.features.shape_goals if g]
+    primary = goals[0] if goals else None
+    if note.kind == "floating_terminal":
+        if primary:
+            return (
+                f"{cut_label} is a floating terminal outside "
+                f"{_glossed_goal(primary)}"
+            )
+        return f"{cut_label} is a floating terminal"
+    if note.kind == "floating_honor":
+        if primary:
+            return (
+                f"{cut_label} is a floating honor outside "
+                f"{_glossed_goal(primary)}"
+            )
+        return f"{cut_label} is a floating honor"
+    if note.kind == "isolated_kanchan":
+        return f"{cut_label} clears a closed middle (kanchan) shape"
+    if note.kind == "isolated_penchan":
+        return f"{cut_label} clears an edge (penchan) shape"
+    if note.kind == "dead_end":
+        return f"{cut_label} is a dead-end tile"
+    return None
 
 
 def _shape_goal_phrase(turn: TurnExplainInput) -> str | None:
@@ -957,12 +1035,18 @@ def template_explain(turn: TurnExplainInput) -> Explanation:
         sentences.append(_sentence_case(note))
 
     goal_bit = _shape_goal_phrase(turn)
+    midhand_bit = _midhand_shape_clause(turn, best_raw, best_tile)
     if goal_bit:
         if goal_bit.startswith("fits"):
             shape_sentence = f"That {goal_bit}"
         else:
             shape_sentence = _sentence_case(goal_bit)
-        if (
+        if midhand_bit and (
+            "floating" in midhand_bit or "dead-end" in midhand_bit
+        ):
+            shape_sentence += f"—{midhand_bit}"
+            midhand_bit = None
+        elif (
             "tanyao" in turn.features.shape_goals
             and best_raw
             and _is_terminal_or_honor(best_raw)
@@ -980,6 +1064,8 @@ def template_explain(turn: TurnExplainInput) -> Explanation:
                 or turn.features.statuses.dora_in_hand
             ):
                 focus = "value"
+    if midhand_bit:
+        sentences.append(_sentence_case(midhand_bit))
 
     furiten_bit = _furiten_because_sentence(turn)
     if furiten_bit:

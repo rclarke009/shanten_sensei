@@ -14,6 +14,7 @@ from shanten_sensei.schema import (
     DerivedFeatures,
     Explanation,
     GameState,
+    HandShapeNote,
     HandStatuses,
     MortalCandidate,
     MortalOutput,
@@ -272,17 +273,59 @@ def test_template_tanyao_honor_ukeire_contrast():
         ukeire=UkeireInfo(count=55, tiles=["2m"], remaining_by_tile={"2m": 3}),
         ukeire_alt=UkeireInfo(count=41, tiles=["2m"], remaining_by_tile={"2m": 3}),
     )
+    turn.features.hand_shape_notes = [
+        HandShapeNote(kind="floating_honor", tile="W")
+    ]
     result = template_explain(turn)
     assert "Throw" in result.summary
     assert "improving tiles" in result.summary
     assert "vs about" in result.summary
     assert "fits tanyao" in result.summary
-    assert "can’t stay" in result.summary or "can't stay" in result.summary
+    assert "floating honor" in result.summary
+    assert "outside tanyao" in result.summary
     assert "acceptances (tiles that improve the hand)" not in result.summary
     score = score_explanation_substance(turn, result.summary)
     assert score.thin is False
     assert "ukeire" in score.anchors
+    assert "hand_shape_note" in score.anchors
     assert validate_explanation(turn, result) == []
+
+
+def test_template_floating_terminal_and_isolated_kanchan():
+    turn = _turn(
+        shape_goals=["tanyao"],
+        mortal_best="dahai 9p",
+        player_action="dahai 5s",
+        diverge=True,
+        ukeire=UkeireInfo(count=40, tiles=["2m"], remaining_by_tile={"2m": 3}),
+    )
+    turn.features.hand_shape_notes = [
+        HandShapeNote(kind="floating_terminal", tile="9p")
+    ]
+    result = template_explain(turn)
+    assert "floating terminal" in result.summary
+    assert "outside tanyao" in result.summary
+    assert "hand_shape_note" in score_explanation_substance(
+        turn, result.summary
+    ).anchors
+
+    turn2 = _turn(mortal_best="dahai 2m", player_action="dahai 5s", diverge=True)
+    turn2.features.hand_shape_notes = [
+        HandShapeNote(kind="isolated_kanchan", tile="2m")
+    ]
+    result2 = template_explain(turn2)
+    assert "closed middle" in result2.summary
+    assert "kanchan" in result2.summary
+
+
+def test_payload_includes_hand_shape_notes():
+    turn = _turn(shape_goals=["tanyao"], mortal_best="dahai 9p")
+    turn.features.hand_shape_notes = [
+        HandShapeNote(kind="floating_terminal", tile="9p")
+    ]
+    payload = build_user_payload(turn)
+    assert payload["hand_shape_notes"][0]["kind"] == "floating_terminal"
+    assert "lone 1/9" in payload["hand_shape_note_glossary"]["floating_terminal"]
 
 
 def test_template_mentions_wall_depletion():

@@ -45,6 +45,21 @@ class CallTradeoff(BaseModel):
 
 ScoreDiff = Literal["leading", "trailing", "even"]
 
+HandShapeNoteKind = Literal[
+    "floating_terminal",
+    "floating_honor",
+    "isolated_kanchan",
+    "isolated_penchan",
+    "dead_end",
+]
+
+
+class HandShapeNote(BaseModel):
+    """Conservative mid-hand shape tag for why a cut is dead wood."""
+
+    kind: HandShapeNoteKind
+    tile: str
+
 
 class ScoreSituation(BaseModel):
     """Point-situation facts for push/fold / late-game coaching."""
@@ -101,6 +116,10 @@ class DerivedFeatures(BaseModel):
     score_situation: ScoreSituation | None = Field(
         default=None,
         description="Relative scores / opponent riichi / late-game flags",
+    )
+    hand_shape_notes: list[HandShapeNote] = Field(
+        default_factory=list,
+        description="Mid-hand dead-wood / isolated-shape tags for the cut tile",
     )
 
 

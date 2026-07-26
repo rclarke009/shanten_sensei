@@ -480,8 +480,10 @@
         chips.push({ text: `indicators ${s.visible_dora.join(" ")}`, on: true });
       }
       if (d.danger && Object.keys(d.danger).length) {
+        const labels = d.danger_labels || {};
         for (const [tile, tag] of Object.entries(d.danger)) {
-          chips.push({ text: `${tile}:${tag}`, warn: true });
+          const glossed = labels[tile] || tag;
+          chips.push({ text: `${tile}: ${glossed}`, warn: true });
         }
       }
       return chips;

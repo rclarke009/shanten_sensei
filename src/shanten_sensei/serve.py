@@ -15,6 +15,7 @@ from shanten_sensei.glosses import (
     YAKU_REFERENCE_LABEL,
     YAKU_REFERENCE_URL,
     format_aiming_for,
+    glossed_danger,
     glossed_shanten,
     glossed_wait,
 )
@@ -141,6 +142,10 @@ class ReviewSession:
             "yaku_reference_label": YAKU_REFERENCE_LABEL,
             "statuses": statuses.model_dump(),
             "danger": turn.features.danger,
+            "danger_labels": {
+                tile: glossed_danger(tag) or tag
+                for tile, tag in turn.features.danger.items()
+            },
         }
 
 

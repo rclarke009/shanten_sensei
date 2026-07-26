@@ -7,6 +7,7 @@ from shanten_sensei.features import (
     collect_visible_tiles,
     extract_features,
     hand_without_discard,
+    infer_hand_shape_notes,
     wait_tiles_if_tenpai,
 )
 
@@ -142,3 +143,67 @@ def test_build_score_situation_even_no_flags():
     assert sit.score_diff == "even"
     assert sit.riichi_opponents == 0
     assert sit.late_game is False
+
+
+def test_infer_floating_terminal_outside_tanyao():
+    # No 7p/8p — 9p must not look like a kanchan/penchan fragment.
+    hand = [
+        "2m", "3m", "4m", "5m", "6m",
+        "2p", "3p", "4p", "5p", "6p",
+        "3s", "4s", "5s", "9p",
+    ]
+    notes = infer_hand_shape_notes(
+        hand, cut_tile="9p", shape_goals=["tanyao"], shanten=2
+    )
+    assert len(notes) == 1
+    assert notes[0].kind == "floating_terminal"
+    assert notes[0].tile == "9p"
+
+
+def test_infer_isolated_kanchan_cut():
+    hand = [
+        "2m", "4m",
+        "5p", "6p", "7p",
+        "2s", "3s", "4s", "5s", "6s", "7s", "8s",
+        "W", "W",
+    ]
+    notes = infer_hand_shape_notes(
+        hand, cut_tile="2m", shape_goals=[], shanten=2
+    )
+    assert len(notes) == 1
+    assert notes[0].kind == "isolated_kanchan"
+    assert notes[0].tile == "2m"
+
+
+def test_infer_dead_end_when_no_goals():
+    hand = [
+        "1m", "2m", "3m",
+        "1p", "2p", "3p",
+        "1s", "2s", "3s",
+        "9s", "E", "S", "W", "N",
+    ]
+    notes = infer_hand_shape_notes(
+        hand, cut_tile="W", shape_goals=[], shanten=3
+    )
+    assert len(notes) == 1
+    assert notes[0].kind == "dead_end"
+    assert notes[0].tile == "W"
+
+
+def test_infer_no_notes_at_tenpai():
+    notes = infer_hand_shape_notes(
+        HAND, cut_tile="9p", shape_goals=[], shanten=0
+    )
+    assert notes == []
+
+
+def test_extract_features_hand_shape_notes_midhand():
+    hand = [
+        "2m", "3m", "4m", "5m", "6m",
+        "2p", "3p", "4p", "5p", "6p",
+        "3s", "4s", "5s", "9p",
+    ]
+    feats = extract_features(hand, ukeire_after_discard="9p")
+    assert feats.statuses.shanten > 0
+    assert any(n.kind == "floating_terminal" for n in feats.hand_shape_notes)
+    assert feats.hand_shape_notes[0].tile == "9p"

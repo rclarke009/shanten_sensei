@@ -26,6 +26,14 @@ DANGER_GLOSS: dict[str, str] = {
     "one-chance": "middle tile almost all out",
 }
 
+SHAPE_NOTE_GLOSS: dict[str, str] = {
+    "floating_terminal": "lone 1/9 with no connector",
+    "floating_honor": "lone wind or dragon",
+    "isolated_kanchan": "closed middle fragment",
+    "isolated_penchan": "edge wait fragment",
+    "dead_end": "connects to nothing useful",
+}
+
 NO_CLEAR_SHAPE = "no clear yaku shape yet"
 
 YAKU_REFERENCE_URL = "https://www.mahjongmaster.co/learn/riichi/yaku/"
