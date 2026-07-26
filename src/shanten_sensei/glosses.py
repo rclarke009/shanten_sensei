@@ -9,6 +9,8 @@ GOAL_GLOSS: dict[str, str] = {
     "chinitsu": "one suit only",
     "toitoi": "all triplets",
     "chiitoi": "seven pairs",
+    "pinfu": "closed all-sequences; no value pair",
+    "ittsu": "1–9 straight in one suit",
 }
 
 WAIT_GLOSS: dict[str, str] = {

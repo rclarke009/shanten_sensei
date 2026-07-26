@@ -10,7 +10,12 @@ from pathlib import Path
 from typing import Any, Callable, Literal
 from urllib.parse import parse_qs, urlparse
 
-from shanten_sensei.explain import explain_llm, template_explain, validate_explanation
+from shanten_sensei.explain import (
+    coaching_shape_goals,
+    explain_llm,
+    template_explain,
+    validate_explanation,
+)
 from shanten_sensei.glosses import (
     YAKU_REFERENCE_LABEL,
     YAKU_REFERENCE_URL,
@@ -136,8 +141,8 @@ class ReviewSession:
             "calls": list(turn.game_state.calls),
             "wait_shape": wait_shape,
             "wait_shape_label": glossed_wait(wait_shape),
-            "shape_goals": list(turn.features.shape_goals),
-            "aiming_for": format_aiming_for(turn.features.shape_goals),
+            "shape_goals": coaching_shape_goals(turn),
+            "aiming_for": format_aiming_for(coaching_shape_goals(turn)),
             "yaku_reference_url": YAKU_REFERENCE_URL,
             "yaku_reference_label": YAKU_REFERENCE_LABEL,
             "statuses": statuses.model_dump(),

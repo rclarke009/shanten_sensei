@@ -129,7 +129,7 @@ Explanation {
 
 - Never recommend an action Mortal did not rank highly (pin to Mortal’s top choice, or explain the gap vs. the player’s pick).
 - Prefer concrete tile language (“5-sou”, “ryanmen wait”) over jargon dumps; introduce terms when used.
-- Default length: one or two sentences. Optional “deeper” paragraph behind a second click later.
+- Default length: one or two sentences. Optional `detail` paragraph behind a second-click “More” in review (grounded facts only).
 - Trigger model: **on demand** (“Why?”) — not every tile — to control cost and attention.
 
 ### Suggested feature sources

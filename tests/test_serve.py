@@ -111,6 +111,8 @@ def test_api_explain_template_mode(session_and_server):
     assert data["source"] == "template"
     assert data["explanation"]["pinned_action"] == "dahai 9p"
     assert data["grounding_errors"] == []
+    # detail is optional grounded expansion (second-click More in review UI)
+    assert "detail" in data["explanation"]
     # template path does not use the LLM stub
     assert calls["n"] == 0
     assert session._explain_calls == 0

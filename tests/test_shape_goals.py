@@ -30,7 +30,9 @@ def test_infer_tanyao_all_simples():
         "7s",
         "8s",
     ]
-    assert infer_shape_goals(hand) == ["tanyao"]
+    goals = infer_shape_goals(hand)
+    assert goals[0] == "tanyao"
+    assert "tanyao" in goals
 
 
 def test_infer_not_tanyao_with_terminal():
@@ -195,6 +197,108 @@ def test_infer_toitoi_strong_sets():
     assert "toitoi" in infer_shape_goals(hand)
 
 
+def test_infer_pinfu_sequence_dense_closed():
+    # Two sequences + open-ended taatsu, no value tiles
+    hand = [
+        "2m",
+        "3m",
+        "4m",
+        "5m",
+        "6m",
+        "7m",
+        "3p",
+        "4p",
+        "5p",
+        "6p",
+        "2s",
+        "3s",
+        "4s",
+    ]
+    goals = infer_shape_goals(hand)
+    assert "pinfu" in goals
+    assert "tanyao" in goals
+
+
+def test_infer_not_pinfu_when_open():
+    hand = [
+        "2m",
+        "3m",
+        "4m",
+        "5m",
+        "6m",
+        "7m",
+        "3p",
+        "4p",
+        "5p",
+        "6p",
+        "2s",
+        "3s",
+        "4s",
+    ]
+    calls = [{"type": "chi", "tiles": ["2m", "3m", "4m"]}]
+    assert "pinfu" not in infer_shape_goals(hand, calls=calls)
+
+
+def test_infer_not_pinfu_with_dragon_pair():
+    hand = [
+        "2m",
+        "3m",
+        "4m",
+        "5m",
+        "6m",
+        "7m",
+        "3p",
+        "4p",
+        "2s",
+        "3s",
+        "4s",
+        "C",
+        "C",
+    ]
+    goals = infer_shape_goals(hand)
+    assert "yakuhai" in goals
+    assert "pinfu" not in goals
+
+
+def test_infer_ittsu_two_blocks():
+    # 123 + 456 in sou, mixed other suits — under-tag ittsu
+    hand = [
+        "1s",
+        "2s",
+        "3s",
+        "4s",
+        "5s",
+        "6s",
+        "2m",
+        "3m",
+        "4m",
+        "5p",
+        "6p",
+        "7p",
+        "8p",
+    ]
+    assert "ittsu" in infer_shape_goals(hand)
+
+
+def test_infer_not_ittsu_single_block():
+    hand = [
+        "1s",
+        "2s",
+        "3s",
+        "2m",
+        "3m",
+        "4m",
+        "5p",
+        "6p",
+        "7p",
+        "2p",
+        "3p",
+        "8m",
+        "9m",
+    ]
+    assert "ittsu" not in infer_shape_goals(hand)
+
+
 def test_extract_features_shape_goals_after_discard():
     # 14 tiles: cut Chun → remaining all-simples tanyao
     hand = [
@@ -214,7 +318,8 @@ def test_extract_features_shape_goals_after_discard():
         "C",
     ]
     feats = extract_features(hand, ukeire_after_discard="C", dora_indicators=["2s"])
-    assert feats.shape_goals == ["tanyao"]
+    assert feats.shape_goals[0] == "tanyao"
+    assert "tanyao" in feats.shape_goals
     assert "3s" in feats.statuses.dora_in_hand
 
 
@@ -341,6 +446,21 @@ def test_grounding_rejects_unlisted_yaku():
     )
     errors = validate_explanation(turn, bad)
     assert any("pinfu" in e for e in errors)
+
+
+def test_grounding_allows_listed_pinfu():
+    turn = _turn_with_goals(shape_goals=["pinfu", "tanyao"])
+    ok = Explanation(
+        summary=(
+            "Throw 5-sou. That fits "
+            "pinfu (closed all-sequences; no value pair) / "
+            "tanyao (2–8 only; no 1/9, winds, or dragons)."
+        ),
+        focus="efficiency",
+        pinned_action="dahai 5s",
+        contrasted_action="dahai 9p",
+    )
+    assert validate_explanation(turn, ok) == []
 
 
 def test_grounding_allows_listed_yaku_and_dora():

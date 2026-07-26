@@ -34,6 +34,13 @@ def test_yakuhai_gloss_mentions_triplet():
     assert "triplet" in GOAL_GLOSS["yakuhai"]
 
 
+def test_pinfu_ittsu_gloss():
+    assert "sequences" in GOAL_GLOSS["pinfu"]
+    assert "1–9" in GOAL_GLOSS["ittsu"] or "1-9" in GOAL_GLOSS["ittsu"]
+    assert "pinfu" in format_aiming_for(["pinfu"])
+    assert "ittsu" in format_aiming_for(["ittsu"])
+
+
 def test_yaku_reference_url():
     assert YAKU_REFERENCE_URL.startswith("https://")
     assert "yaku" in YAKU_REFERENCE_URL.lower()

@@ -408,10 +408,20 @@ def attach_score_situation(features: DerivedFeatures, state: GameState) -> None:
 
 # Deterministic shape/yaku tags — verbalize only; never claim Mortal "aims for" these.
 SHAPE_GOAL_TAGS = frozenset(
-    {"tanyao", "yakuhai", "honitsu", "chinitsu", "toitoi", "chiitoi"}
+    {
+        "tanyao",
+        "yakuhai",
+        "honitsu",
+        "chinitsu",
+        "toitoi",
+        "chiitoi",
+        "pinfu",
+        "ittsu",
+    }
 )
 _DRAGONS = frozenset({"P", "F", "C"})
 _WINDS = frozenset({"E", "S", "W", "N"})
+_ITTSU_BLOCKS = ((1, 2, 3), (4, 5, 6), (7, 8, 9))
 
 
 def _is_terminal_or_honor(tile: str) -> bool:
@@ -503,6 +513,105 @@ def _is_isolated_penchan_cut(counts: list[int], tile: str) -> bool:
         has_8 = counts[tile_to_34(f"8{suit}")] >= 1
         has_9 = counts[tile_to_34(f"9{suit}")] >= 1
         return has_8 and has_9 and not has_7 and n in (8, 9)
+    return False
+
+
+def _value_tiles_from_context(context: dict | None) -> set[str]:
+    """Dragons + seat/round wind when context provides them."""
+    yakuhai_tiles = set(_DRAGONS)
+    context = context or {}
+    for key in ("bakaze", "jikaze", "round_wind", "seat_wind"):
+        val = context.get(key)
+        if isinstance(val, str):
+            try:
+                wind = deaka(normalize_tile(val))
+            except ValueError:
+                continue
+            if wind in _WINDS:
+                yakuhai_tiles.add(wind)
+    return yakuhai_tiles
+
+
+def _ittsu_blocks_present(counts: list[int], suit: str) -> int:
+    """How many of the 123 / 456 / 789 blocks are fully represented in one suit."""
+    present = 0
+    for ranks in _ITTSU_BLOCKS:
+        # Under-tag: require all three ranks present (not a loose stretch).
+        if all(counts[tile_to_34(f"{n}{suit}")] >= 1 for n in ranks):
+            present += 1
+    return present
+
+
+def _looks_like_ittsu(all_tiles: list[str]) -> bool:
+    """True when one suit clearly covers two of the three 1–9 stretch blocks."""
+    if not all_tiles:
+        return False
+    counts = tiles_to_34_array(all_tiles)
+    for suit in "mps":
+        if _ittsu_blocks_present(counts, suit) >= 2:
+            return True
+    return False
+
+
+def _open_ended_sequence_density(counts: list[int]) -> tuple[int, int]:
+    """Return (complete_sequences, ryanmen_taatsu) across suits (greedy, conservative)."""
+    complete = 0
+    ryanmen = 0
+    work = list(counts)
+    for suit_i, _suit in enumerate("mps"):
+        base = suit_i * 9
+        # Prefer complete sequences first so taatsu aren't double-counted away.
+        for n in range(7):
+            while (
+                work[base + n] >= 1
+                and work[base + n + 1] >= 1
+                and work[base + n + 2] >= 1
+            ):
+                work[base + n] -= 1
+                work[base + n + 1] -= 1
+                work[base + n + 2] -= 1
+                complete += 1
+        # Open-ended taatsu: 23–78 adjacent pairs (not 12 / 89 edges).
+        for n in range(1, 8):
+            while work[base + n] >= 1 and work[base + n + 1] >= 1:
+                work[base + n] -= 1
+                work[base + n + 1] -= 1
+                ryanmen += 1
+    return complete, ryanmen
+
+
+def _looks_like_pinfu(
+    hand: list[str],
+    *,
+    menzen: bool,
+    context: dict | None,
+) -> bool:
+    """Conservative closed-hand pinfu shape: sequences, no value pairs."""
+    if not menzen or not hand:
+        return False
+    counts = tiles_to_34_array(hand)
+    # Value pairs / triplets → yakuhai path, not pinfu.
+    for tile in _value_tiles_from_context(context):
+        if counts[tile_to_34(tile)] >= 2:
+            return False
+    # Dragons in hand (even singleton) rarely mean pinfu aiming.
+    for tile in _DRAGONS:
+        if counts[tile_to_34(tile)] >= 1:
+            return False
+    triplets = sum(1 for c in counts if c >= 3)
+    if triplets >= 2:
+        return False
+    pairish = sum(1 for c in counts if c >= 2)
+    if pairish >= 5:
+        return False
+    complete, ryanmen = _open_ended_sequence_density(counts)
+    # Two+ sequences is enough; otherwise need open-ended taatsu density.
+    if complete >= 2:
+        return True
+    if complete >= 1 and ryanmen >= 2:
+        return True
+    if ryanmen >= 3:
+        return True
     return False
 
 
@@ -599,17 +708,18 @@ def infer_shape_goals(
         goals.append("tanyao")
 
     # Yakuhai: pair/triplet of dragon, or seat/round wind when context provides them
-    yakuhai_tiles = set(_DRAGONS)
-    for key in ("bakaze", "jikaze", "round_wind", "seat_wind"):
-        val = context.get(key)
-        if isinstance(val, str):
-            wind = deaka(normalize_tile(val))
-            if wind in _WINDS:
-                yakuhai_tiles.add(wind)
-    for tile in yakuhai_tiles:
+    for tile in _value_tiles_from_context(context):
         if counts[tile_to_34(tile)] >= 2:
             goals.append("yakuhai")
             break
+
+    # Ittsu: two of three 1–9 blocks in one suit (closed + calls)
+    if _looks_like_ittsu(all_tiles):
+        goals.append("ittsu")
+
+    # Pinfu: closed, sequence-dense, no value pairs (under-tag)
+    if _looks_like_pinfu(hand, menzen=menzen, context=context):
+        goals.append("pinfu")
 
     # Chiitoi: only closed; strictly better than regular (under-tag)
     if menzen and sum(counts) in (13, 14):
@@ -627,8 +737,17 @@ def infer_shape_goals(
     # Prefer chinitsu over honitsu; cap length
     if "chinitsu" in goals and "honitsu" in goals:
         goals = [g for g in goals if g != "honitsu"]
-    # Stable priority: flush → tanyao → yakuhai → chiitoi → toitoi
-    priority = ["chinitsu", "honitsu", "tanyao", "yakuhai", "chiitoi", "toitoi"]
+    # Stable priority: flush → ittsu → tanyao → pinfu → yakuhai → chiitoi → toitoi
+    priority = [
+        "chinitsu",
+        "honitsu",
+        "ittsu",
+        "tanyao",
+        "pinfu",
+        "yakuhai",
+        "chiitoi",
+        "toitoi",
+    ]
     ordered = [g for g in priority if g in goals]
     return ordered[:max_goals]
 

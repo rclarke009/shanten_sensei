@@ -2,7 +2,12 @@
 
 from pathlib import Path
 
-from shanten_sensei.explain import explain, template_explain, validate_explanation
+from shanten_sensei.explain import (
+    coaching_shape_goals,
+    explain,
+    template_explain,
+    validate_explanation,
+)
 from shanten_sensei.features import build_call_tradeoff, simulate_shanten_after_call
 from shanten_sensei.ingest import turn_from_path
 from shanten_sensei.live import (
@@ -11,7 +16,7 @@ from shanten_sensei.live import (
     turn_from_live,
     unify_call_candidates,
 )
-from shanten_sensei.schema import MortalCandidate
+from shanten_sensei.schema import Explanation, MortalCandidate
 from shanten_sensei.tiles import coach_action_label
 
 FIXTURES_ROOT = Path(__file__).resolve().parents[1] / "fixtures"
@@ -149,3 +154,91 @@ def test_diverge_005_chi_voice():
     assert "Chi" in result.summary or "chi" in result.summary.lower()
     assert "skip" in result.summary.lower()
     assert validate_explanation(turn, result) == []
+
+
+def test_template_call_does_not_claim_pinfu():
+    hand = [
+        "2m",
+        "3m",
+        "4m",
+        "5m",
+        "6m",
+        "7m",
+        "3p",
+        "4p",
+        "5p",
+        "5s",
+        "5s",
+        "6s",
+        "7s",
+    ]
+    turn = turn_from_live(
+        hand=hand,
+        recommended={"type": "pon", "pai": "5s", "consumed": ["5s", "5s"]},
+        candidates=candidates_from_meta_options([("pon", 0.9), ("none", 0.1)]),
+        call_tile="5s",
+        call_consumed=["5s", "5s"],
+    )
+    turn.features.shape_goals = ["pinfu"]
+    assert turn.features.call_tradeoff is not None
+    assert turn.features.call_tradeoff.opens_hand is True
+    assert "pinfu" not in coaching_shape_goals(turn)
+
+    result = template_explain(turn)
+    assert "Call" in result.summary or "pon" in result.summary.lower()
+    assert "pinfu" not in result.summary.lower()
+    assert "open" in result.summary.lower() or "riichi" in result.summary.lower()
+    assert validate_explanation(turn, result) == []
+
+
+def test_grounding_rejects_pinfu_on_open_call():
+    hand = [
+        "2m",
+        "3m",
+        "4m",
+        "5m",
+        "6m",
+        "7m",
+        "3p",
+        "4p",
+        "5p",
+        "5s",
+        "5s",
+        "6s",
+        "7s",
+    ]
+    turn = turn_from_live(
+        hand=hand,
+        recommended={"type": "pon", "pai": "5s", "consumed": ["5s", "5s"]},
+        candidates=candidates_from_meta_options([("pon", 0.9), ("none", 0.1)]),
+        call_tile="5s",
+        call_consumed=["5s", "5s"],
+    )
+    turn.features.shape_goals = ["pinfu"]
+    bad = Explanation(
+        summary=(
+            "Call pon on 5-sou, don’t skip. This move opens your hand while still "
+            "aiming for pinfu (closed all-sequences; no value pair)."
+        ),
+        focus="tempo",
+        pinned_action="pon 5s",
+        contrasted_action="none",
+    )
+    errors = validate_explanation(turn, bad)
+    assert any("pinfu" in e for e in errors)
+
+
+def test_grounding_rejects_pon_verb_when_chi_best():
+    turn = turn_from_path(FIXTURES_ROOT / "diverge_005" / "entry.json")
+    assert turn.mortal_best.startswith("chi")
+    bad = Explanation(
+        summary=(
+            "Call pon on 5-man, don’t skip. You’re 3-shanten (3 steps from ready) "
+            "closed with about 40 improving tiles."
+        ),
+        focus="tempo",
+        pinned_action=turn.mortal_best,
+        contrasted_action="none",
+    )
+    errors = validate_explanation(turn, bad)
+    assert any("call kind" in e for e in errors)

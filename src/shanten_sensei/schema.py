@@ -140,3 +140,7 @@ class Explanation(BaseModel):
     focus: Focus = "mixed"
     pinned_action: str
     contrasted_action: str | None = None
+    detail: str | None = Field(
+        default=None,
+        description="Optional second-click deeper paragraph; grounded facts only",
+    )
