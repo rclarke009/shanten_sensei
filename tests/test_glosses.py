@@ -7,6 +7,7 @@ from shanten_sensei.glosses import (
     YAKU_REFERENCE_URL,
     format_aiming_for,
     glossed_danger,
+    glossed_furiten,
     glossed_goal,
     glossed_shanten,
     glossed_wait,
@@ -54,9 +55,12 @@ def test_wait_gloss_ryanmen():
 
 
 def test_glossed_shanten():
+    assert glossed_shanten(-1) == "complete (winning hand)"
     assert glossed_shanten(0) == "tenpai (ready)"
     assert glossed_shanten(1) == "1-shanten (1 step from ready)"
     assert glossed_shanten(3) == "3-shanten (3 steps from ready)"
+    assert glossed_shanten(8) == "hand sync unavailable"
+    assert "8-shanten" not in glossed_shanten(8)
 
 
 def test_danger_gloss():
@@ -65,6 +69,13 @@ def test_danger_gloss():
     assert glossed_danger("suji") == "suji (interval-safe vs a common wait)"
     assert glossed_danger("genbutsu") == "genbutsu (safe — already discarded)"
     assert glossed_danger(None) is None
+
+
+def test_glossed_furiten():
+    assert glossed_furiten() == "not furiten"
+    assert "tsumo" in glossed_furiten(furiten=True).lower()
+    assert "discard" in glossed_furiten(furiten=True).lower()
+    assert "passed" in glossed_furiten(temporary=True).lower()
 
 
 def test_shape_note_gloss():

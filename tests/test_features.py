@@ -8,6 +8,7 @@ from shanten_sensei.features import (
     extract_features,
     hand_without_discard,
     infer_hand_shape_notes,
+    is_furiten,
     wait_tiles_if_tenpai,
 )
 
@@ -26,6 +27,24 @@ def test_mortal_discard_reaches_ryanmen_tenpai():
     waits = wait_tiles_if_tenpai(after)
     assert set(waits) == {"4s", "7s"}
     assert classify_wait_shape(waits) == "ryanmen"
+
+
+def test_is_furiten_discard_intersects_waits():
+    assert is_furiten(["4s", "7s"], ["7s", "1m"]) is True
+    assert is_furiten(["4s", "7s"], ["1m", "2m"]) is False
+    assert is_furiten(["5sr"], ["5s"]) is True
+    assert is_furiten([], ["7s"]) is False
+
+
+def test_extract_features_furiten_from_river():
+    feats = extract_features(
+        HAND,
+        discards=["7s"],
+        ukeire_after_discard="9p",
+    )
+    assert feats.statuses.tenpai is True
+    assert feats.statuses.furiten is True
+    assert set(feats.ukeire.tiles) == {"4s", "7s"}
 
 
 def test_player_discard_falls_back_to_iishanten():
@@ -207,3 +226,28 @@ def test_extract_features_hand_shape_notes_midhand():
     assert feats.statuses.shanten > 0
     assert any(n.kind == "floating_terminal" for n in feats.hand_shape_notes)
     assert feats.hand_shape_notes[0].tile == "9p"
+
+
+def test_short_hand_without_calls_is_shanten_sentinel():
+    """After chi/pon the closed hand is short; without melds Sensei returns 8."""
+    short = [
+        "1m", "2m", "3m", "4m", "5m", "6m",
+        "1p", "2p", "3p", "9p", "7s",
+    ]  # 11 tiles (post-chi, pre-discard)
+    assert calculate_shanten(short) == 8
+    feats = extract_features(short)
+    assert feats.shanten == 8
+    assert feats.ukeire.count == 0
+
+
+def test_short_hand_with_call_has_real_shanten():
+    short = [
+        "1m", "2m", "3m", "4m", "5m", "6m",
+        "1p", "2p", "3p", "9p", "7s",
+    ]
+    calls = [{"type": "chi", "pai": "5s", "consumed": ["3s", "4s"]}]
+    assert calculate_shanten(short, num_melds=1) < 8
+    feats = extract_features(short, calls=calls, ukeire_after_discard="9p")
+    assert feats.shanten < 8
+    assert feats.statuses.menzen is False
+    assert feats.ukeire.count > 0

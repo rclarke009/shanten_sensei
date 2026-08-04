@@ -4,6 +4,15 @@ Live coaching uses two sibling repos: this explainer library, and the [overlay f
 
 **Practice / friend / vs-AI only — not for ranked.** Why? is disabled when ranked (段位戦) is detected.
 
+### Two client paths
+
+| Path | Status |
+|------|--------|
+| **Chromium** — **Start Browser** in the overlay | Supported (steps below) |
+| **Safari** — Majsoul in Safari + companion coach window | Designed; not a polished one-click path yet |
+
+Dual-window layout (game beside the Sensei companion UI) is the intended UX for both. Details and future Safari work: [`dual-client-architecture.md`](dual-client-architecture.md). Certificate / proxy trust rules: [`proxy-trust-precautions.md`](proxy-trust-precautions.md).
+
 ---
 
 ## What you get in-game

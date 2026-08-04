@@ -167,10 +167,13 @@ def test_efficiency_with_anchor_not_thin():
 def test_glossed_shanten_singular_step():
     assert _glossed_shanten_phrase(1) == "1-shanten (1 step from ready)"
     assert _glossed_shanten_phrase(3) == "3-shanten (3 steps from ready)"
+    assert _glossed_shanten_phrase(-1) == "complete (winning hand)"
     assert _glossed_shanten_phrase(0) == "tenpai (ready)"
     assert _glossed_acceptances_phrase(55) == (
         "about 55 acceptances (tiles that improve the hand)"
     )
+    assert _glossed_acceptances_phrase(0) == "no improving tiles"
+    assert "about" not in _glossed_acceptances_phrase(0)
 
 
 def test_template_wait_gloss_and_furiten_because():
@@ -219,9 +222,10 @@ def test_template_wait_gloss_and_furiten_because():
     result = template_explain(turn)
     assert "Throw" in result.summary
     assert "ryanmen (two-sided open) wait" in result.summary
-    assert "furiten on" in result.summary
+    assert "furiten" in result.summary
     assert "7-sou" in result.summary
-    assert "defense" in result.summary
+    assert "any discard" in result.summary
+    assert "tsumo" in result.summary.lower()
     assert result.focus in ("defense", "mixed")
     payload = build_user_payload(turn)
     assert payload["wait_shape_glossary"]["ryanmen"] == "two-sided open"
@@ -324,8 +328,35 @@ def test_template_floating_terminal_and_isolated_kanchan():
         HandShapeNote(kind="isolated_kanchan", tile="2m")
     ]
     result2 = template_explain(turn2)
-    assert "closed middle" in result2.summary
+    assert "2-man clears a closed middle" in result2.summary
     assert "kanchan" in result2.summary
+    assert not re.search(
+        r"\b(?:kanchan|penchan|fragment)\b(?:\s*\([^)]*\))?\s+on\s+2-man\b",
+        result2.summary,
+        re.I,
+    )
+    assert validate_explanation(turn2, result2) == []
+
+
+def test_validate_rejects_kanchan_on_cut_phrasing():
+    turn = _turn(mortal_best="dahai 8m", player_action="dahai 2s", diverge=True)
+    turn.features.hand_shape_notes = [
+        HandShapeNote(kind="isolated_kanchan", tile="8m")
+    ]
+    bad = Explanation(
+        summary=(
+            "Throw 8-man. That keeps your hand intact with about 19 tiles that "
+            "can improve it, while throwing 2-sou would not change your current "
+            "situation.\nYou're 2-shanten (2 steps from ready) and aiming for "
+            "pinfu (closed all-sequences; no value pair) with an isolated "
+            "kanchan (closed middle fragment) on 8-man."
+        ),
+        focus="efficiency",
+        pinned_action="dahai 8m",
+        contrasted_action="dahai 2s",
+    )
+    errors = validate_explanation(turn, bad)
+    assert "isolated_shape_on_cut_phrasing" in errors
 
 
 def test_template_dead_end_is_cut_reason_not_keep():
@@ -359,7 +390,56 @@ def test_validate_rejects_maintains_dead_end_polarity():
         contrasted_action="dahai 2m",
     )
     errors = validate_explanation(turn, bad)
-    assert "dead_end_polarity_inverted" in errors
+    assert "cut_note_polarity_inverted" in errors
+
+
+def test_validate_rejects_keeps_floating_terminal_polarity():
+    turn = _turn(
+        shape_goals=["pinfu"],
+        mortal_best="dahai 9p",
+        player_action="dahai 3s",
+        diverge=True,
+        ukeire=UkeireInfo(
+            count=10, tiles=["5m", "8m"], remaining_by_tile={"5m": 4, "8m": 4}
+        ),
+    )
+    turn.features.hand_shape_notes = [
+        HandShapeNote(kind="floating_terminal", tile="9p")
+    ]
+    bad = Explanation(
+        summary=(
+            "Throw 9-pin. That keeps a floating terminal, which can connect to "
+            "8-pin or 6-pin for improvement.\nYou're 1-shanten (1 step from ready) "
+            "with about 10 tiles that can improve your hand, fitting pinfu "
+            "(closed all-sequences; no value pair)."
+        ),
+        focus="efficiency",
+        pinned_action="dahai 9p",
+        contrasted_action="dahai 3s",
+    )
+    errors = validate_explanation(turn, bad)
+    assert "cut_note_polarity_inverted" in errors
+
+
+def test_validate_allows_keeps_ryanmen_wait():
+    turn = _turn(
+        mortal_best="dahai 4m",
+        player_action="dahai 6m",
+        diverge=True,
+        ukeire=UkeireInfo(count=6, tiles=["4s", "7s"]),
+        wait_shape="ryanmen",
+    )
+    good = Explanation(
+        summary=(
+            "Throw 4-man, not 6-man. That keeps a ryanmen (two-sided open) wait. "
+            "You're tenpai with about 6 tiles that can improve your hand."
+        ),
+        focus="efficiency",
+        pinned_action="dahai 4m",
+        contrasted_action="dahai 6m",
+    )
+    assert "cut_note_polarity_inverted" not in validate_explanation(turn, good)
+    assert validate_explanation(turn, good) == []
 
 
 def test_payload_includes_hand_shape_notes():
@@ -643,3 +723,266 @@ def test_grounding_accepts_real_ukeire_contrast():
         contrasted_action="dahai 5s",
     )
     assert validate_explanation(turn, good) == []
+
+
+def _yakuhai_haku_pair_turn() -> TurnExplainInput:
+    """Haku pair (correct yakuhai) + singleton East (not a pair)."""
+    turn = _turn(
+        shape_goals=["yakuhai"],
+        mortal_best="dahai 1m",
+        player_action="dahai E",
+        diverge=True,
+        ukeire=UkeireInfo(count=40, tiles=["2m"], remaining_by_tile={"2m": 3}),
+        ukeire_alt=UkeireInfo(count=35, tiles=["2m"], remaining_by_tile={"2m": 3}),
+    )
+    turn.game_state.hand = [
+        "1m",
+        "2m",
+        "3m",
+        "4p",
+        "5p",
+        "6p",
+        "3s",
+        "4s",
+        "5s",
+        "P",
+        "P",
+        "E",
+        "C",
+        "7m",
+    ]
+    turn.features.context = {"jikaze": "E", "bakaze": "E"}
+    return turn
+
+
+def test_grounding_rejects_false_yakuhai_pair_of_singleton_east():
+    turn = _yakuhai_haku_pair_turn()
+    bad = Explanation(
+        summary=(
+            "Throw 1-man, not East. You're 3-shanten (3 steps from ready) with "
+            "about 40 tiles that can improve your hand.\nYou're aiming for "
+            "yakuhai (triplet of dragon or your seat/round wind)—you have a "
+            "pair of East for that, while 1-man is a floating terminal."
+        ),
+        focus="efficiency",
+        pinned_action="dahai 1m",
+        contrasted_action="dahai E",
+    )
+    errors = validate_explanation(turn, bad)
+    assert any("yakuhai_pairs" in e or "pair of" in e for e in errors)
+
+
+def test_grounding_rejects_pair_plus_floating_honor_contradiction():
+    turn = _turn(
+        shape_goals=["yakuhai"],
+        mortal_best="dahai S",
+        player_action="dahai 9s",
+        diverge=True,
+        ukeire=UkeireInfo(count=31, tiles=["2m"], remaining_by_tile={"2m": 3}),
+        ukeire_alt=UkeireInfo(count=36, tiles=["2m"], remaining_by_tile={"2m": 3}),
+    )
+    # Singleton South — not a pair; floating honor on the cut.
+    turn.game_state.hand = [
+        "2p",
+        "2p",
+        "4p",
+        "8p",
+        "1s",
+        "2s",
+        "3s",
+        "4s",
+        "5s",
+        "5sr",
+        "7s",
+        "8s",
+        "9s",
+        "S",
+    ]
+    turn.features.context = {"jikaze": "E", "bakaze": "E"}
+    turn.features.hand_shape_notes = [
+        HandShapeNote(kind="floating_honor", tile="S")
+    ]
+    # Yakuhai in goals without a real value pair (LLM/feature mismatch case):
+    # still must not claim "pair of South".
+    bad = Explanation(
+        summary=(
+            "Throw South. You have about 31 tiles that can improve your hand, "
+            "while throwing 9-sou would leave you with only 36 improving tiles "
+            "available.\nYou're aiming for yakuhai (triplet of dragon or your "
+            "seat/round wind)—you have a pair of South for that, and the South "
+            "tile is a floating honor."
+        ),
+        focus="efficiency",
+        pinned_action="dahai S",
+        contrasted_action="dahai 9s",
+    )
+    errors = validate_explanation(turn, bad)
+    assert any("yakuhai_pairs" in e or "pair of" in e for e in errors)
+
+
+def test_grounding_accepts_real_pair_of_haku():
+    turn = _yakuhai_haku_pair_turn()
+    good = Explanation(
+        summary=(
+            "Throw 1-man, not East. You're 3-shanten (3 steps from ready) with "
+            "about 40 improving tiles left vs about 35 if you throw East.\n"
+            "That fits yakuhai (triplet of dragon or your seat/round wind)—you're "
+            "holding a pair of Haku for that; 1-man isn't a value tile, while "
+            "East can still pair."
+        ),
+        focus="efficiency",
+        pinned_action="dahai 1m",
+        contrasted_action="dahai E",
+    )
+    assert validate_explanation(turn, good) == []
+
+
+def test_grounding_rejects_tiles_that_can_improve_contrast_without_wall_note():
+    """Screenshot: 65 vs 73 — alt has more ukeire; contrast not authorized."""
+    turn = _turn(
+        diverge=True,
+        mortal_best="dahai 9m",
+        player_action="dahai N",
+        ukeire=UkeireInfo(count=65, tiles=["2m"], remaining_by_tile={"2m": 3}),
+        ukeire_alt=UkeireInfo(count=73, tiles=["2m"], remaining_by_tile={"2m": 3}),
+    )
+    bad = Explanation(
+        summary=(
+            "Throw 9-man, not North. You're 4-shanten (4 steps from ready) with "
+            "about 65 tiles that can improve your hand, vs about 73 if you throw "
+            "North."
+        ),
+        focus="efficiency",
+        pinned_action="dahai 9m",
+        contrasted_action="dahai N",
+    )
+    errors = validate_explanation(turn, bad)
+    assert any("improving-tile contrast" in e for e in errors)
+
+
+def test_grounding_rejects_only_on_larger_ukeire_count():
+    turn = _turn(
+        diverge=True,
+        mortal_best="dahai 2m",
+        player_action="dahai 2p",
+        ukeire=UkeireInfo(count=37, tiles=["3m"], remaining_by_tile={"3m": 3}),
+        ukeire_alt=UkeireInfo(count=33, tiles=["3m"], remaining_by_tile={"3m": 3}),
+    )
+    bad_only = Explanation(
+        summary=(
+            "Throw 2-man, not 2-pin. You're 3-shanten (3 steps from ready) with "
+            "only about 37 tiles that can improve your hand, while 2-pin leaves "
+            "you with about 33."
+        ),
+        focus="efficiency",
+        pinned_action="dahai 2m",
+        contrasted_action="dahai 2p",
+    )
+    errors = validate_explanation(turn, bad_only)
+    assert any("only" in e for e in errors)
+
+
+def test_grounding_accepts_only_on_smaller_ukeire_contrast():
+    turn = _turn(
+        diverge=True,
+        mortal_best="dahai 2m",
+        player_action="dahai 2p",
+        ukeire=UkeireInfo(count=37, tiles=["3m"], remaining_by_tile={"3m": 3}),
+        ukeire_alt=UkeireInfo(count=33, tiles=["3m"], remaining_by_tile={"3m": 3}),
+    )
+    good = Explanation(
+        summary=(
+            "Throw 2-man, not 2-pin. You're 3-shanten (3 steps from ready) with "
+            "about 37 tiles that can improve your hand, while 2-pin leaves you "
+            "with only about 33."
+        ),
+        focus="efficiency",
+        pinned_action="dahai 2m",
+        contrasted_action="dahai 2p",
+    )
+    assert validate_explanation(turn, good) == []
+
+
+def test_grounding_rejects_dead_end_on_alternate_tile():
+    turn = _turn(
+        mortal_best="dahai C",
+        player_action="dahai 3s",
+        diverge=True,
+        ukeire=UkeireInfo(count=30, tiles=["4s"], remaining_by_tile={"4s": 3}),
+        ukeire_alt=UkeireInfo(count=11, tiles=["4s"], remaining_by_tile={"4s": 3}),
+    )
+    turn.game_state.hand = [
+        "2p",
+        "5p",
+        "7p",
+        "1s",
+        "2s",
+        "2s",
+        "3s",
+        "3s",
+        "1m",
+        "2m",
+        "3m",
+        "3m",
+        "C",
+        "4p",
+    ]
+    turn.features.hand_shape_notes = [
+        HandShapeNote(kind="floating_honor", tile="C")
+    ]
+    bad = Explanation(
+        summary=(
+            "Throw Chun. That leaves about 30 tiles that can improve your hand, "
+            "vs about 11 if you throw 3-sou. You're 2-shanten (2 steps from "
+            "ready)—Chun is a floating honor, while 3-sou is a dead-end tile that "
+            "connects to nothing useful."
+        ),
+        focus="efficiency",
+        pinned_action="dahai C",
+        contrasted_action="dahai 3s",
+    )
+    errors = validate_explanation(turn, bad)
+    assert any("dead_end" in e and "3s" in e for e in errors)
+
+
+def test_grounding_rejects_isolated_kanchan_on_wrong_tile():
+    turn = _turn(
+        shape_goals=["yakuhai"],
+        mortal_best="dahai 2p",
+        player_action="dahai S",
+        diverge=True,
+        ukeire=UkeireInfo(count=12, tiles=["4p"], remaining_by_tile={"4p": 3}),
+    )
+    turn.game_state.hand = [
+        "3p",
+        "3p",
+        "5p",
+        "5p",
+        "7p",
+        "8p",
+        "1s",
+        "3s",
+        "4s",
+        "5s",
+        "6s",
+        "7s",
+        "S",
+        "2p",
+    ]
+    turn.features.context = {"jikaze": "E", "bakaze": "E"}
+    # No isolated_kanchan note — claiming 2-pin is one must fail.
+    bad = Explanation(
+        summary=(
+            "Throw 2-pin. That keeps your hand intact while maintaining a chance "
+            "to improve with about 12 tiles that can help you.\nYou're 2-shanten "
+            "(2 steps from ready) and aiming for yakuhai (triplet of dragon or "
+            "your seat/round wind) with a pair of South, while 2-pin is an "
+            "isolated kanchan (closed middle fragment)."
+        ),
+        focus="efficiency",
+        pinned_action="dahai 2p",
+        contrasted_action="dahai S",
+    )
+    errors = validate_explanation(turn, bad)
+    assert any("isolated_kanchan" in e for e in errors)
+    assert any("yakuhai_pairs" in e or "pair of" in e for e in errors)

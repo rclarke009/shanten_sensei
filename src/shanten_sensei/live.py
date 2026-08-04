@@ -22,6 +22,7 @@ from shanten_sensei.tiles import (
     enrich_call_action_label,
     is_call_action,
     is_call_decision_action,
+    is_hora_decision_action,
     is_riichi_decision_action,
     normalize_tile,
     parse_action_kind,
@@ -94,6 +95,53 @@ def _reaction_consumed(
         if isinstance(consumed, list) and consumed:
             return [normalize_tile(str(t)) for t in consumed]
     return None
+
+
+def _resolve_player_discards(
+    discards: list[str] | None,
+    visible_discards: dict[str, list[str]] | None,
+    *,
+    player_seat: int | str | None = None,
+    context: dict[str, Any] | None = None,
+) -> list[str]:
+    """Prefer explicit river; else the player's seat river from visible_discards."""
+    if discards:
+        return [normalize_tile(t) for t in discards]
+    seat = player_seat
+    if seat is None and context:
+        seat = context.get("self_seat")
+    if seat is None:
+        return []
+    river = (visible_discards or {}).get(str(seat)) or []
+    return [normalize_tile(t) for t in river]
+
+
+def _reach_cut_tile(
+    recommended: str | dict[str, Any],
+    candidates: list[MortalCandidate],
+    *,
+    explicit_tile: str | None = None,
+) -> str | None:
+    """Tile discarded with riichi (nested reach_dahai, pai, or top dahai meta)."""
+    if explicit_tile:
+        return normalize_tile(explicit_tile)
+    if isinstance(recommended, dict):
+        nested = recommended.get("reach_dahai")
+        if isinstance(nested, dict) and nested.get("pai"):
+            return normalize_tile(str(nested["pai"]))
+        if (recommended.get("type") or recommended.get("type_")) == "reach":
+            pai = recommended.get("pai")
+            if pai:
+                return normalize_tile(str(pai))
+    dahai = [c for c in candidates if c.action.startswith("dahai ")]
+    if not dahai:
+        return None
+
+    def _prob(c: MortalCandidate) -> float:
+        return float(c.prob) if c.prob is not None else -1.0
+
+    best = max(dahai, key=_prob)
+    return normalize_tile(best.action.split(" ", 1)[1])
 
 
 def unify_call_candidates(
@@ -187,6 +235,7 @@ def turn_from_live(
     context: dict[str, Any] | None = None,
     call_tile: str | None = None,
     call_consumed: list[str] | None = None,
+    player_seat: int | str | None = None,
 ) -> TurnExplainInput:
     """Build a grounded turn for live coaching (pre-decision or post-action).
 
@@ -212,12 +261,17 @@ def turn_from_live(
             )
 
     hand_n = [normalize_tile(t) for t in hand]
-    discards_n = [normalize_tile(t) for t in (discards or [])]
     dora_n = [normalize_tile(t) for t in (dora_indicators or [])]
     visible_n = {
         str(k): [normalize_tile(t) for t in v]
         for k, v in (visible_discards or {}).items()
     }
+    discards_n = _resolve_player_discards(
+        discards,
+        visible_n,
+        player_seat=player_seat,
+        context=context,
+    )
     calls_n = list(calls or [])
 
     resolved_tile = (
@@ -266,6 +320,14 @@ def turn_from_live(
     discard_tile = None
     if mortal_best.startswith("dahai "):
         discard_tile = mortal_best.split(" ", 1)[1]
+    elif is_riichi_decision_action(mortal_best):
+        # Don't use call_tile here — for reach, pai often means the win tile.
+        explicit = None
+        if context and context.get("reach_discard"):
+            explicit = str(context["reach_discard"])
+        discard_tile = _reach_cut_tile(
+            recommended, cand_models, explicit_tile=explicit
+        )
 
     candidate_tiles = [
         c.action.split(" ", 1)[1]
@@ -290,6 +352,8 @@ def turn_from_live(
     }
     if resolved_tile:
         feat_context["call_tile"] = resolved_tile
+    if discard_tile and is_riichi_decision_action(mortal_best):
+        feat_context["reach_discard"] = discard_tile
 
     features = extract_features(
         hand_n,
@@ -414,6 +478,8 @@ def is_riichi_decision_turn(turn: TurnExplainInput) -> bool:
     """
     if is_call_decision_turn(turn):
         return False
+    if is_hora_decision_turn(turn):
+        return False
     if is_riichi_decision_action(turn.mortal_best):
         return True
     if turn.diverge and is_riichi_decision_action(turn.player_action):
@@ -425,5 +491,19 @@ def is_riichi_decision_turn(turn: TurnExplainInput) -> bool:
     if turn.mortal_best.strip() == "none" and any(
         is_riichi_decision_action(c.action) for c in turn.mortal_output.candidates
     ):
+        return True
+    return False
+
+
+def is_hora_decision_turn(turn: TurnExplainInput) -> bool:
+    """True when Why? should use Take the win voice (hora / agari)."""
+    if is_call_decision_turn(turn):
+        return False
+    if is_hora_decision_action(turn.mortal_best):
+        return True
+    if turn.diverge and is_hora_decision_action(turn.player_action):
+        return True
+    alt = next_best_action(turn)
+    if alt and is_hora_decision_action(alt):
         return True
     return False

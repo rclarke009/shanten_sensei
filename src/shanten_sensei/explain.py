@@ -25,6 +25,7 @@ from shanten_sensei.glosses import glossed_shanten as _glossed_shanten_phrase
 from shanten_sensei.glosses import glossed_wait as _glossed_wait
 from shanten_sensei.live import (
     is_call_decision_turn,
+    is_hora_decision_turn,
     is_riichi_decision_turn,
     next_best_action,
 )
@@ -36,6 +37,7 @@ from shanten_sensei.tiles import (
     human_action_label,
     human_tile_label,
     is_call_action,
+    is_hora_decision_action,
     is_riichi_decision_action,
     normalize_tile,
     parse_action_kind,
@@ -69,8 +71,15 @@ aiming for closed-only yaku (pinfu, chiitoi / seven pairs)—cite tempo, \
 shanten, or call_tradeoff instead.
 
 For riichi tips (riichi_decision true — reach vs none), lead with \
-\"Declare riichi\" / \"Stay silent\" — never \"Throw reach\" or \"Skip\". Cite \
-tenpai / wait shape, furiten_blocking_tiles, dora_in_hand, or score_situation.
+\"Declare riichi\" / \"Stay silent\" — never \"Throw reach\" or \"Skip\". When \
+reach_discard is present, name that cut in the lead (e.g. \"Declare riichi, \
+discard red 5-sou\") — use \"discard\", not \"Throw\". Cite tenpai / wait \
+shape, furiten_blocking_tiles, dora_in_hand, or score_situation.
+
+For hora tips (hora_decision true — winning on tsumo/ron), lead with \
+\"Take the win\" — never bare \"hora\" or \"Declare hora\". When shanten is -1, \
+say the hand is complete / a winning hand, not tenpai (ready). Do not invent \
+yaku aims for a finished hand.
 
 When danger tags a safer cut (genbutsu / suji / one-chance with \
 danger_glossary parentheticals), prefer a defense sentence over bare \
@@ -87,9 +96,14 @@ tiles / remaining_by_tile, ukeire_alt, wall_note, wait shape (with \
 wait_shape_glossary parentheticals, e.g. \"ryanmen (two-sided open)\"), \
 shape_goals (with glossary parentheticals), hand_shape_notes (floating \
 terminal/honor, isolated kanchan/penchan, dead-end — these describe why the \
-recommended cut is weak/useless, e.g. \"North is a dead-end tile\", \
-\"9-pin is a floating terminal\", \"2-man clears a closed middle\"; never say \
-you keep / maintain / preserve a dead-end, floating, or isolated shape), \
+recommended cut is weak/useless and apply only to the recommended cut tile \
+named in those notes, e.g. \"North is a dead-end tile\", \
+\"9-pin is a floating terminal\", \"2-man clears a closed middle (kanchan) shape\" / \
+\"8-man clears an edge (penchan) shape\"; never attach those notes to the \
+alternate cut or another hand tile; never write \"kanchan/penchan/fragment on \
+{tile}\" — that sounds like a wait; if naming both ends say \"6–8 kanchan\", never \
+\"kanchan on 8-man\"; never say you keep / maintain / preserve a dead-end, \
+floating, or isolated shape), \
 furiten_blocking_tiles, call_tradeoff, danger, score_situation, or dora. The \
 chart already shows Mortal % — leave percentages out of the summary.
 
@@ -119,9 +133,11 @@ non-empty.
 
 When shape_goals includes yakuhai, always explain with a short because clause \
 from yakuhai_pairs / yakuhai_singleton_value_tiles (e.g. you’re holding a pair \
-of East for that; 1-man isn’t a value tile, while Chun can still pair). Never \
-say an alternate \"would not help … aiming for yakuhai\" without naming those \
-tile facts.
+of East for that; 1-man isn’t a value tile, while Chun can still pair). Only \
+say \"pair of X\" / \"holding a pair of X\" when X is listed in yakuhai_pairs; \
+singletons in yakuhai_singleton_value_tiles use \"can still pair\", never \
+\"pair of\". Never say an alternate \"would not help … aiming for yakuhai\" \
+without naming those tile facts.
 
 Put a line break (\\n) in summary between the move/ukeire chunk and the \
 hand-state / aiming chunk when both are present. Do not use a blank line.
@@ -145,11 +161,12 @@ isn’t a value tile, while Chun can still pair.\"
 When statuses.wait_shape is set, name it with the wait_shape_glossary \
 parenthetical (e.g. \"ryanmen (two-sided open) wait\"). When statuses.furiten \
 is true, name furiten_blocking_tiles if present (tiles you already discarded \
-that are also waits) and note this is defense, not a win this turn.
+that are also waits) and explain that ron is blocked on every wait—you can \
+only win by tsumo (self-draw).
 
 Example tenpai voice: \"Throw 4-man, not 6-man. That keeps a ryanmen \
-(two-sided open) wait.\\nYou’re furiten on 7-sou—you already discarded it—so \
-this is for defense, not a win this turn.\"
+(two-sided open) wait.\\nYou’re furiten—you already discarded 7-sou, so you \
+can’t win on any discard (only tsumo).\"
 
 Example call voice: \"Skip the pon on 3-sou. You’re still 2-shanten (2 steps \
 from ready) closed with about 55 improving tiles.\\nCalling would open the \
@@ -163,8 +180,11 @@ staying closed. That opens the hand—no riichi.\"
 Example defense voice: \"Throw 4-man, not 6-man—it's suji (interval-safe vs a \
 common wait). 6-man isn't.\\nAn opponent is in riichi—safety matters.\"
 
-Example riichi voice: \"Declare riichi. You’re tenpai (ready) with a ryanmen \
-(two-sided open) wait.\\nYou have dora (bonus tile) in hand.\"
+Example riichi voice: \"Declare riichi, discard 9-pin. You’re tenpai (ready) \
+with a ryanmen (two-sided open) wait.\\nYou have dora (bonus tile) in hand.\"
+
+Example hora voice: \"Take the win. You’re complete (winning hand).\\nYou have \
+dora (bonus tile) in hand.\"
 
 Return JSON with exactly these keys:
 - summary: string (1–2 short paragraphs of coach text; use \\n between move/ukeire and state/aiming when both appear)
@@ -187,12 +207,15 @@ _THIN_CLAIM_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
     )
 )
 
-# LLM inverted polarity: dead-end notes are reasons to cut, not keep.
-_DEAD_END_POLARITY_PATTERN = re.compile(
+# LLM inverted polarity: cut-shape notes are reasons to discard, not keep.
+# Do not match wait phrasing like "That keeps a ryanmen wait".
+_CUT_NOTE_POLARITY_PATTERN = re.compile(
     r"\b(?:maintain(?:s|ing)?|keep(?:s|ing)?|preserve(?:s|ing)?)\s+"
-    r"(?:a\s+)?dead[-\s]?end\b",
+    r"(?:a\s+|an\s+)?"
+    r"(?:dead[-\s]?end|floating|isolated|closed\s+middle|kanchan|penchan|edge)\b",
     re.IGNORECASE,
 )
+
 
 # Yaku / shape words the LLM might invent — only allowed if in shape_goals
 # (plus "dora" when dora_in_hand is present).
@@ -229,6 +252,9 @@ def recommending_open_call(turn: TurnExplainInput) -> bool:
 
 def coaching_shape_goals(turn: TurnExplainInput) -> list[str]:
     """Shape goals safe to show/cite for this tip (filters closed-only on open calls)."""
+    # Finished hand: don't keep "aiming for" mid-game shape tags.
+    if turn.features.shanten == -1:
+        return []
     goals = [g for g in turn.features.shape_goals if g]
     if recommending_open_call(turn):
         return [g for g in goals if g not in CLOSED_ONLY_GOALS]
@@ -240,6 +266,8 @@ def _glossed_dora_phrase(tile_label: str) -> str:
 
 
 def _glossed_acceptances_phrase(count: int) -> str:
+    if count == 0:
+        return "no improving tiles"
     return f"about {count} acceptances ({_ACCEPTANCES_GLOSS})"
 
 
@@ -366,6 +394,9 @@ def _feature_anchors_in_summary(turn: TurnExplainInput, summary_l: str) -> list[
     ):
         anchors.append("riichi_decision")
 
+    if is_hora_decision_turn(turn) and re.search(r"\btake the win\b", summary_l):
+        anchors.append("hora_decision")
+
     return anchors
 
 
@@ -431,7 +462,8 @@ def build_user_payload(turn: TurnExplainInput) -> dict[str, Any]:
     note = wall_note(turn)
     call_decision = is_call_decision_turn(turn)
     riichi_decision = is_riichi_decision_turn(turn)
-    coach_labels = call_decision or riichi_decision
+    hora_decision = is_hora_decision_turn(turn)
+    coach_labels = call_decision or riichi_decision or hora_decision
 
     def _display(action: str) -> str:
         if riichi_decision and action.strip() == "none":
@@ -439,6 +471,19 @@ def build_user_payload(turn: TurnExplainInput) -> dict[str, Any]:
         if coach_labels:
             return coach_action_label(action)
         return human_action_label(action)
+
+    def _shanten_glossary() -> str:
+        sh = turn.features.shanten
+        if sh == -1:
+            return "winning hand"
+        if sh <= 0:
+            return "ready"
+        step = "step" if sh == 1 else "steps"
+        return f"{sh} {step} from ready"
+
+    reach_discard = turn.features.context.get("reach_discard")
+    if reach_discard:
+        reach_discard = normalize_tile(str(reach_discard))
 
     return {
         "player_action": turn.player_action,
@@ -450,6 +495,11 @@ def build_user_payload(turn: TurnExplainInput) -> dict[str, Any]:
         "diverge": turn.diverge,
         "call_decision": call_decision,
         "riichi_decision": riichi_decision,
+        "hora_decision": hora_decision,
+        "reach_discard": reach_discard,
+        "reach_discard_display": (
+            human_tile_label(reach_discard) if reach_discard else None
+        ),
         "mortal_scores": scores,
         "hand": turn.game_state.hand,
         "tile_glossary": _tile_glossary_for_turn(turn, next_best),
@@ -485,14 +535,7 @@ def build_user_payload(turn: TurnExplainInput) -> dict[str, Any]:
             else {}
         ),
         "hand_metric_glossary": {
-            "shanten": (
-                "ready"
-                if turn.features.shanten <= 0
-                else (
-                    f"{turn.features.shanten} "
-                    f"{'step' if turn.features.shanten == 1 else 'steps'} from ready"
-                )
-            ),
+            "shanten": _shanten_glossary(),
             "acceptances": _ACCEPTANCES_GLOSS,
         },
         "call_tradeoff": (
@@ -690,24 +733,25 @@ def _furiten_blocking_tiles(turn: TurnExplainInput) -> list[str]:
 
 
 def _furiten_because_sentence(turn: TurnExplainInput) -> str | None:
-    """Name discarded wait tiles when furiten; defense, not a win this turn."""
-    if not turn.features.statuses.furiten:
+    """Name discarded wait tiles; ron blocked on every wait (tsumo only)."""
+    statuses = turn.features.statuses
+    if statuses.temporary_furiten and not statuses.furiten:
+        return (
+            "You’re temporarily furiten—you passed on a win this turn—so you "
+            "can’t ron until after your next discard"
+        )
+    if not statuses.furiten:
         return None
     labels = [human_tile_label(t) for t in _furiten_blocking_tiles(turn)]
     if not labels:
         return (
-            "You’re furiten—you already discarded a wait tile—so this is for "
-            "defense, not a win this turn"
+            "You’re furiten—you already discarded a wait tile—so you can’t "
+            "win on any discard (only tsumo)"
         )
-    if len(labels) == 1:
-        named = labels[0]
-        pronoun = "it"
-    else:
-        named = " and ".join(labels)
-        pronoun = "them"
+    named = labels[0] if len(labels) == 1 else " and ".join(labels)
     return (
-        f"You’re furiten on {named}—you already discarded {pronoun}—so this "
-        "is for defense, not a win this turn"
+        f"You’re furiten—you already discarded {named}, so you can’t win "
+        "on any discard (only tsumo)"
     )
 
 
@@ -1084,7 +1128,13 @@ def _template_explain_riichi(turn: TurnExplainInput) -> Explanation:
             move_sents[-1] = "Stay silent—don’t declare riichi yet"
         focus = "defense"
     else:
-        label = coach_action_label(best)
+        reach_discard = turn.features.context.get("reach_discard")
+        if reach_discard:
+            label = (
+                f"Declare riichi, discard {human_tile_label(str(reach_discard))}"
+            )
+        else:
+            label = coach_action_label(best)
         if contrasted and parse_action_kind(contrasted) == "none":
             move_sents.append(f"{label}, don’t stay silent")
         else:
@@ -1132,10 +1182,61 @@ def _template_explain_riichi(turn: TurnExplainInput) -> Explanation:
     )
 
 
+def _template_explain_hora(turn: TurnExplainInput) -> Explanation:
+    """Take the win coach voice for hora / agari."""
+    best = turn.mortal_best
+    player = turn.player_action
+    statuses = turn.features.statuses
+    alt = next_best_action(turn)
+
+    focus: Focus = "value"
+    move_sents: list[str] = []
+    state_sents: list[str] = []
+    contrasted: str | None = None
+
+    if turn.diverge and player != best:
+        contrasted = player
+    elif alt and alt != best:
+        contrasted = alt
+
+    label = coach_action_label(best) if is_hora_decision_action(best) else "Take the win"
+    if contrasted and contrasted.strip() == "none":
+        move_sents.append(f"{label}, don’t skip")
+    else:
+        move_sents.append(label)
+
+    shanten = turn.features.shanten
+    if shanten == -1:
+        move_sents.append(f"You’re {_glossed_shanten_phrase(-1)}")
+    elif statuses.tenpai or shanten == 0:
+        move_sents.append("You’re tenpai (ready) with a winning hand")
+    elif shanten is not None:
+        state_sents.append(f"You’re {_glossed_shanten_phrase(shanten)}")
+
+    if statuses.dora_in_hand:
+        state_sents.append("You have dora (bonus tile) in hand")
+        focus = "value"
+
+    focus = _append_score_situation(state_sents, focus, turn)
+
+    summary = _join_summary_paragraphs(move_sents, state_sents)
+    return _finalize_explanation(
+        turn,
+        Explanation(
+            summary=summary,
+            focus=focus,
+            pinned_action=best,
+            contrasted_action=contrasted,
+        ),
+    )
+
+
 def template_explain(turn: TurnExplainInput) -> Explanation:
     """Deterministic offline explainer for tests / no API key."""
     if is_call_decision_turn(turn):
         return _template_explain_call(turn)
+    if is_hora_decision_turn(turn):
+        return _template_explain_hora(turn)
     if is_riichi_decision_turn(turn):
         return _template_explain_riichi(turn)
 
@@ -1317,8 +1418,9 @@ def _tile_claim_label_pattern(tile: str) -> str:
     """Regex fragment matching human / code forms of a tile in lowered prose."""
     tile = deaka(normalize_tile(tile)).lower()
     if tile in _HONOR_ALIASES:
+        # Word-bound each alias so bare "n" does not match inside "chun".
         names = "|".join(
-            re.escape(a) for a in (tile, *_HONOR_ALIASES[tile])
+            rf"(?:\b{re.escape(a)}\b)" for a in (tile, *_HONOR_ALIASES[tile])
         )
         return rf"(?:{names})"
     m = re.fullmatch(r"([1-9])([mps])", tile)
@@ -1398,24 +1500,91 @@ def _false_genbutsu_error(turn: TurnExplainInput, summary_l: str) -> str | None:
     return None
 
 
+# Count unit: "improving tiles" or prompt voice "tiles that can improve…"
+_UKEIRE_COUNT_UNIT = (
+    r"(?:improving tiles?(?:\s+available)?|"
+    r"tiles that can improve(?:\s+(?:your\s+)?hand)?|"
+    r"tiles that can help(?:\s+you)?)"
+)
+
 _UKEIRE_CONTRAST_PAIR_RE = re.compile(
-    r"(?P<best>\d+)\s+improving tiles?"
-    r".{0,100}?"
+    rf"(?P<best>\d+)\s+{_UKEIRE_COUNT_UNIT}"
+    r".{0,120}?"
     r"(?:vs(?:\s+about)?|compared to(?:\s+only)?)\s+"
-    r"(?P<alt>\d+)"
-    r"(?:\s+improving tiles?)?"
-    r".{0,40}?"
-    r"if you throw\s+(?P<label>[^.]+?)(?:\.|,|$)",
+    rf"(?:about\s+)?(?P<alt>\d+)"
+    rf"(?:\s+{_UKEIRE_COUNT_UNIT})?"
+    r".{0,60}?"
+    r"(?:if you throw|while throwing)\s+(?P<label>[^.]+?)(?:\.|,|$)",
+    re.IGNORECASE | re.DOTALL,
+)
+
+# "31 tiles that can improve…, while throwing 9-sou … only 36 improving tiles"
+_UKEIRE_WHILE_THROWING_RE = re.compile(
+    rf"(?P<best>\d+)\s+{_UKEIRE_COUNT_UNIT}"
+    r".{0,120}?"
+    r"while\s+throwing\s+(?P<label>[^.]+?)"
+    r".{0,80}?"
+    rf"(?:only\s+)?(?:about\s+)?(?P<alt>\d+)\s+{_UKEIRE_COUNT_UNIT}",
+    re.IGNORECASE | re.DOTALL,
+)
+
+# "37 … while 2-pin leaves you with only about 35"
+_UKEIRE_WHILE_LEAVES_RE = re.compile(
+    rf"(?P<best>\d+)\s+{_UKEIRE_COUNT_UNIT}"
+    r".{0,120}?"
+    r"while\s+(?P<label>[^.]+?)\s+leaves\s+you\s+with\s+"
+    rf"(?:only\s+)?(?:about\s+)?(?P<alt>\d+)",
     re.IGNORECASE | re.DOTALL,
 )
 
 # Adjacent claim only — avoid matching best-count … vs about N if you throw
 _UKEIRE_ALT_ONLY_RE = re.compile(
-    r"(?:compared to(?:\s+only)?|only)\s+"
-    r"(?P<alt>\d+)\s+improving tiles?\s+"
-    r"if you throw\s+(?P<label>[^.]+?)(?:\.|,|$)",
+    rf"(?:compared to(?:\s+only)?|only)\s+"
+    rf"(?:about\s+)?(?P<alt>\d+)\s+{_UKEIRE_COUNT_UNIT}\s+"
+    r"(?:if you throw|while throwing)\s+(?P<label>[^.]+?)(?:\.|,|$)",
     re.IGNORECASE | re.DOTALL,
 )
+
+
+def _ukeire_contrast_match(
+    summary_l: str,
+) -> tuple[re.Match[str], int | None, int, str] | None:
+    """Return (match, best_n|None, alt_n, label) for an improving-tile contrast."""
+    pair = _UKEIRE_CONTRAST_PAIR_RE.search(summary_l)
+    if pair:
+        return pair, int(pair.group("best")), int(pair.group("alt")), pair.group("label")
+    while_throw = _UKEIRE_WHILE_THROWING_RE.search(summary_l)
+    if while_throw:
+        return (
+            while_throw,
+            int(while_throw.group("best")),
+            int(while_throw.group("alt")),
+            while_throw.group("label"),
+        )
+    while_leaves = _UKEIRE_WHILE_LEAVES_RE.search(summary_l)
+    if while_leaves:
+        return (
+            while_leaves,
+            int(while_leaves.group("best")),
+            int(while_leaves.group("alt")),
+            while_leaves.group("label"),
+        )
+    alt_only = _UKEIRE_ALT_ONLY_RE.search(summary_l)
+    if alt_only:
+        return alt_only, None, int(alt_only.group("alt")), alt_only.group("label")
+    return None
+
+
+def _ukeire_only_on_larger_error(
+    summary_l: str, best_n: int, alt_n: int
+) -> str | None:
+    """Reject 'only N' when N is the larger of the two cited contrast counts."""
+    smaller = min(best_n, alt_n)
+    for m in re.finditer(r"\bonly\s+(?:about\s+)?(\d+)\b", summary_l):
+        n = int(m.group(1))
+        if n in (best_n, alt_n) and n != smaller:
+            return "summary uses 'only' on the larger improving-tile count"
+    return None
 
 
 def _false_ukeire_contrast_error(
@@ -1428,32 +1597,165 @@ def _false_ukeire_contrast_error(
     alt_raw = _action_tile_token_raw(alt_action) if alt_action else None
     alt_code = _danger_key(alt_raw) if alt_raw else None
 
-    pair = _UKEIRE_CONTRAST_PAIR_RE.search(summary_l)
-    alt_only = None if pair else _UKEIRE_ALT_ONLY_RE.search(summary_l)
-    match = pair or alt_only
-    if not match:
+    parsed = _ukeire_contrast_match(summary_l)
+    if not parsed:
         return None
+    match, best_n, alt_n, label = parsed
 
     if note_kind != "contrast" or alt_info is None or alt_code is None:
         return "summary invents improving-tile contrast without wall_note contrast"
 
-    if pair is not None:
-        best_n = int(pair.group("best"))
-        alt_n = int(pair.group("alt"))
-        if best_n != turn.features.ukeire.count or alt_n != alt_info.count:
-            return "summary improving-tile contrast counts do not match ukeire"
-    else:
-        alt_n = int(alt_only.group("alt"))  # type: ignore[union-attr]
-        if alt_n != alt_info.count:
-            return "summary improving-tile contrast counts do not match ukeire"
+    if best_n is not None and best_n != turn.features.ukeire.count:
+        return "summary improving-tile contrast counts do not match ukeire"
+    if alt_n != alt_info.count:
+        return "summary improving-tile contrast counts do not match ukeire"
+    if best_n is not None:
+        only_err = _ukeire_only_on_larger_error(summary_l, best_n, alt_n)
+        if only_err:
+            return only_err
 
-    label = match.group("label").strip().lower()
-    # Trim trailing relative clauses ("1-sou, which is…")
-    label = re.split(r"\s*,\s*|\s+which\b", label, maxsplit=1)[0].strip()
+    label = label.strip().lower()
+    # Trim trailing relative clauses ("1-sou, which is…") / "would leave…"
+    label = re.split(
+        r"\s*,\s*|\s+which\b|\s+would\b|\s+leaves\b", label, maxsplit=1
+    )[0].strip()
     if not _mentions_tile(label, alt_code) and not _mentions_tile(
         summary_l[match.start() : match.end()], alt_code
     ):
         return "summary improving-tile contrast names the wrong alternate cut"
+    return None
+
+
+_HONOR_NAME_TO_CODE: dict[str, str] = {
+    "east": "E",
+    "south": "S",
+    "west": "W",
+    "north": "N",
+    "haku": "P",
+    "white": "P",
+    "hatsu": "F",
+    "green": "F",
+    "chun": "C",
+}
+
+_PAIR_OF_HONOR_RE = re.compile(
+    r"\b(?:holding\s+)?(?:a\s+)?pair\s+of\s+"
+    r"(?:[^\w\s]\s*)?"  # optional tile emoji before the name
+    r"(?P<label>east|south|west|north|haku|hatsu|chun|white|green)\b",
+    re.IGNORECASE,
+)
+
+
+def _yakuhai_pair_codes(
+    hand: list[str], context: dict[str, Any] | None
+) -> set[str]:
+    """Yakuhai-capable honor codes held as a pair or triplet."""
+    value = _yakuhai_value_tiles(context)
+    counts = _hand_tile_counts(hand)
+    return {
+        tile
+        for tile in _HONOR_ORDER
+        if tile in value and counts.get(tile, 0) >= 2
+    }
+
+
+def _false_yakuhai_pair_error(
+    turn: TurnExplainInput, summary_l: str
+) -> str | None:
+    """Reject 'pair of X' when X is not actually held as a yakuhai pair."""
+    allowed = _yakuhai_pair_codes(
+        turn.game_state.hand, turn.features.context
+    )
+    for m in _PAIR_OF_HONOR_RE.finditer(summary_l):
+        code = _HONOR_NAME_TO_CODE.get(m.group("label").lower())
+        if code is None:
+            continue
+        if code not in allowed:
+            return f"summary claims pair of {code!r} not in yakuhai_pairs"
+
+    # Template voice: "while Chun is already a pair"
+    for tile in _HONOR_ORDER:
+        label = _tile_claim_label_pattern(tile)
+        if re.search(rf"{label}\s+is\s+already\s+a\s+pair\b", summary_l):
+            if tile not in allowed:
+                return f"summary claims pair of {tile!r} not in yakuhai_pairs"
+    return None
+
+
+# Cut-note kinds → prose patterns that attribute the note to a named tile.
+_CUT_NOTE_TILE_CLAIM_PATTERNS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("dead_end", (r"dead[-\s]?end",)),
+    ("floating_honor", (r"floating\s+honor",)),
+    ("floating_terminal", (r"floating\s+terminal",)),
+    (
+        "isolated_kanchan",
+        (
+            r"isolated\s+kanchan",
+            r"closed\s+middle(?:\s*\([^)]*\))?",
+        ),
+    ),
+    (
+        "isolated_penchan",
+        (
+            r"isolated\s+penchan",
+            r"(?:an?\s+)?edge(?:\s*\([^)]*\))?\s+shape",
+        ),
+    ),
+)
+
+
+def _tile_claimed_as_cut_note(
+    summary_l: str, tile: str, kind_patterns: tuple[str, ...]
+) -> bool:
+    """True when prose attributes a cut-note kind to this tile."""
+    label = _tile_claim_label_pattern(tile)
+    kind_alt = "|".join(f"(?:{p})" for p in kind_patterns)
+    if re.search(
+        rf"{label}\s+is\s+(?:a\s+|an\s+)?(?:{kind_alt})\b",
+        summary_l,
+    ):
+        return True
+    if re.search(
+        rf"{label}\s+clears\s+(?:a\s+|an\s+)?(?:{kind_alt})\b",
+        summary_l,
+    ):
+        return True
+    if re.search(
+        rf"while\s+{label}\s+is\s+(?:a\s+|an\s+)?(?:{kind_alt})\b",
+        summary_l,
+    ):
+        return True
+    return False
+
+
+def _false_cut_note_tile_error(
+    turn: TurnExplainInput, summary_l: str
+) -> str | None:
+    """Reject cut-note nouns attached to a tile that lacks that note."""
+    notes_by_kind: dict[str, set[str]] = {}
+    for note in turn.features.hand_shape_notes:
+        try:
+            code = deaka(normalize_tile(note.tile))
+        except ValueError:
+            continue
+        notes_by_kind.setdefault(note.kind, set()).add(code)
+
+    # Skip if summary has no cut-note vocabulary at all.
+    if not re.search(
+        r"\b(?:dead[-\s]?end|floating\s+honor|floating\s+terminal|"
+        r"isolated\s+kanchan|isolated\s+penchan|closed\s+middle|"
+        r"edge\s*\([^)]*\)\s+shape|edge\s+shape)\b",
+        summary_l,
+    ):
+        return None
+
+    for tile in _mentionable_tile_codes(turn):
+        for kind, patterns in _CUT_NOTE_TILE_CLAIM_PATTERNS:
+            if not _tile_claimed_as_cut_note(summary_l, tile, patterns):
+                continue
+            allowed = notes_by_kind.get(kind, set())
+            if tile not in allowed:
+                return f"summary attributes {kind} to {tile!r}"
     return None
 
 
@@ -1473,6 +1775,17 @@ def validate_explanation(turn: TurnExplainInput, explanation: Explanation) -> li
             errors.append(
                 f"summary does not mention pinned action/tile {turn.mortal_best!r}"
             )
+
+    reach_discard = turn.features.context.get("reach_discard")
+    if (
+        is_riichi_decision_turn(turn)
+        and is_riichi_decision_action(turn.mortal_best)
+        and reach_discard
+        and not _mentions_tile(summary_l, str(reach_discard))
+    ):
+        errors.append(
+            f"summary does not mention reach discard tile {reach_discard!r}"
+        )
 
     # Reject recommending a different dahai tile than mortal_best
     other = _action_tile_token(turn.player_action)
@@ -1506,8 +1819,20 @@ def validate_explanation(turn: TurnExplainInput, explanation: Explanation) -> li
     if kind_err:
         errors.append(kind_err)
 
-    if _DEAD_END_POLARITY_PATTERN.search(summary_l):
-        errors.append("dead_end_polarity_inverted")
+    if _CUT_NOTE_POLARITY_PATTERN.search(summary_l):
+        errors.append("cut_note_polarity_inverted")
+
+    shape_on_err = _isolated_shape_on_cut_error(turn, summary_l)
+    if shape_on_err:
+        errors.append(shape_on_err)
+
+    cut_tile_err = _false_cut_note_tile_error(turn, summary_l)
+    if cut_tile_err:
+        errors.append(cut_tile_err)
+
+    yakuhai_pair_err = _false_yakuhai_pair_error(turn, summary_l)
+    if yakuhai_pair_err:
+        errors.append(yakuhai_pair_err)
 
     gen_err = _false_genbutsu_error(turn, summary_l)
     if gen_err:
@@ -1522,6 +1847,24 @@ def validate_explanation(turn: TurnExplainInput, explanation: Explanation) -> li
         errors.append("thin_efficiency_claim")
 
     return errors
+
+
+def _isolated_shape_on_cut_error(
+    turn: TurnExplainInput, summary_l: str
+) -> str | None:
+    """Reject 'kanchan/penchan/fragment on {cut}' — sounds like a wait tile."""
+    for note in turn.features.hand_shape_notes:
+        if note.kind not in ("isolated_kanchan", "isolated_penchan"):
+            continue
+        label = _tile_claim_label_pattern(note.tile)
+        if re.search(
+            rf"\b(?:(?:isolated\s+)?(?:kanchan|penchan)|fragment)\b"
+            rf"(?:\s*\([^)]*\))?"
+            rf"\s+on\s+{label}\b",
+            summary_l,
+        ):
+            return "isolated_shape_on_cut_phrasing"
+    return None
 
 
 def _call_kind_mismatch_error(turn: TurnExplainInput, summary_l: str) -> str | None:

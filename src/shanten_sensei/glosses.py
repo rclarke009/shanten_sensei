@@ -63,10 +63,24 @@ def glossed_danger(tag: str | None) -> str | None:
     return f"{tag} ({gloss})" if gloss else tag
 
 
+def glossed_furiten(*, furiten: bool = False, temporary: bool = False) -> str:
+    """Chip / status label for furiten (tsumo-only when permanent)."""
+    if temporary:
+        return "temp furiten (passed a win this turn)"
+    if furiten:
+        return "furiten (can’t win on discard — tsumo only)"
+    return "not furiten"
+
+
 def glossed_shanten(shanten: int) -> str:
     """e.g. 3 → '3-shanten (3 steps from ready)'; 0 → 'tenpai (ready)'."""
+    if shanten == -1:
+        return "complete (winning hand)"
     if shanten <= 0:
         return "tenpai (ready)"
+    # features._shanten_with_melds sentinel when closed+melds ≠ 13/14
+    if shanten == 8:
+        return "hand sync unavailable"
     step = "step" if shanten == 1 else "steps"
     return f"{shanten}-shanten ({shanten} {step} from ready)"
 

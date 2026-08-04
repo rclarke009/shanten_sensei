@@ -208,6 +208,30 @@
       border-color: var(--ok);
       box-shadow: 0 0 0 1px var(--ok), 0 1px 0 #9a9488;
     }
+    .tile.furiten {
+      border-color: #a33;
+      box-shadow: 0 0 0 1px #a33, 0 1px 0 #9a9488;
+      position: relative;
+    }
+    .tile .furiten-badge {
+      position: absolute;
+      top: -0.35rem;
+      right: -0.2rem;
+      font-family: var(--mono);
+      font-size: 0.45rem;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      color: #fff;
+      background: #a33;
+      padding: 0.08rem 0.22rem;
+      border-radius: 3px;
+      line-height: 1.1;
+    }
+    .furiten-note {
+      font-size: 0.85rem;
+      color: var(--warn);
+      margin: -0.4rem 0 0.85rem;
+    }
     .moves {
       display: flex;
       flex-wrap: wrap;
@@ -296,6 +320,26 @@
       background: #2c343d;
       color: var(--text);
     }
+    .yakuman-row {
+      display: flex;
+      gap: 0.75rem;
+      align-items: flex-start;
+      margin-top: 0.65rem;
+    }
+    .yakuman-row .yakuman-face {
+      width: 56px;
+      height: 56px;
+      flex: 0 0 auto;
+      border-radius: 8px;
+      object-fit: cover;
+      background: var(--panel);
+      border: 1px solid var(--line);
+    }
+    .yakuman-row .why-box {
+      flex: 1 1 auto;
+      min-width: 0;
+      margin-top: 0;
+    }
     .why-box {
       margin-top: 0.65rem;
       padding: 1rem 1.1rem;
@@ -312,6 +356,7 @@
       margin-bottom: 0.4rem;
     }
     .why-box .summary { font-size: 1.05rem; white-space: pre-line; }
+    .yakuman-intro .summary { color: var(--text); }
     .why-box .detail-text {
       margin-top: 0.65rem;
       padding-top: 0.65rem;
@@ -367,6 +412,11 @@
     </main>
   </div>
   <script>
+    const YAKUMAN_INTRO =
+      "Hi, I'm Yakuman — you'll get that pun later. " +
+      "I'm here to help you learn Riichi Mahjong. " +
+      "We'll have you winning in no time!";
+
     const state = {
       diverges: [],
       selected: null,
@@ -421,28 +471,42 @@
       return null;
     }
 
-    function makeTile(label, mark, { small = false } = {}) {
+    function deakaTile(label) {
+      const t = String(label || "").trim();
+      if (t === "5mr" || t === "0m") return "5m";
+      if (t === "5pr" || t === "0p") return "5p";
+      if (t === "5sr" || t === "0s") return "5s";
+      return t;
+    }
+
+    function makeTile(label, mark, { small = false, furiten = false } = {}) {
       const face = tileFace(label);
       let markClass = "";
       if (mark === "mortal") markClass = " mortal";
       else if (mark === "player") markClass = " player";
       else if (mark === "both") markClass = " both";
+      if (furiten) markClass += " furiten";
+      const kids = [
+        el("span", { className: "glyph" }, face.glyph),
+        el("span", { className: "code" }, face.code),
+      ];
+      if (furiten) kids.push(el("span", { className: "furiten-badge" }, "Furiten"));
       return el(
         "span",
         {
           className: `tile suit-${face.suit}${markClass}${small ? " sm" : ""}`,
-          title: face.code,
-          "aria-label": face.code,
+          title: furiten ? `${face.code} (furiten — tsumo only)` : face.code,
+          "aria-label": furiten ? `${face.code} furiten` : face.code,
         },
-        el("span", { className: "glyph" }, face.glyph),
-        el("span", { className: "code" }, face.code)
+        ...kids
       );
     }
 
-    function tileRow(labels, { mortalTile, playerTile } = {}) {
+    function tileRow(labels, { mortalTile, playerTile, furitenAll = false, furitenTiles = null } = {}) {
       const row = el("div", { className: "tile-row" });
       const usedMortal = { n: 0 };
       const usedPlayer = { n: 0 };
+      const blockSet = new Set((furitenTiles || []).map(deakaTile));
       for (const label of labels || []) {
         let mark = null;
         const isM = mortalTile && label === mortalTile;
@@ -458,7 +522,9 @@
           mark = "player";
           usedPlayer.n += 1;
         }
-        row.append(makeTile(label, mark));
+        const isFuriten =
+          furitenAll || (blockSet.size > 0 && blockSet.has(deakaTile(label)));
+        row.append(makeTile(label, mark, { furiten: isFuriten }));
       }
       return row;
     }
@@ -471,11 +537,20 @@
       const s = d.statuses || {};
       const chips = [];
       chips.push({ text: s.menzen ? "closed" : "open", on: true });
-      if (s.tenpai || (s.shanten ?? d.shanten) === 0) {
+      const shantenVal = s.shanten ?? d.shanten;
+      // Malformed-hand sentinel from features._shanten_with_melds
+      if (shantenVal === 8) {
+        chips.push({
+          text: d.shanten_label || "hand sync · status unavailable",
+          on: true,
+        });
+        return chips;
+      }
+      if (s.tenpai || shantenVal === 0) {
         chips.push({ text: d.shanten_label || "tenpai (ready)", on: true });
       } else {
         chips.push({
-          text: d.shanten_label || `${s.shanten ?? d.shanten}-shanten`,
+          text: d.shanten_label || `${shantenVal}-shanten`,
           on: true,
         });
       }
@@ -485,12 +560,19 @@
       });
       const waitLabel = d.wait_shape_label || d.wait_shape || s.wait_shape;
       if (waitLabel) chips.push({ text: `wait ${waitLabel}`, on: true });
+      const furitenText =
+        d.furiten_label ||
+        (s.temporary_furiten
+          ? "temp furiten (passed a win this turn)"
+          : s.furiten
+            ? "furiten (can’t win on discard — tsumo only)"
+            : "not furiten");
       chips.push({
-        text: s.furiten ? "furiten" : "not furiten",
-        on: !!s.furiten,
-        warn: !!s.furiten,
+        text: furitenText,
+        on: !!(s.furiten || s.temporary_furiten),
+        warn: !!(s.furiten || s.temporary_furiten),
       });
-      if (s.temporary_furiten) chips.push({ text: "temp furiten", warn: true });
+
       if (s.riichi) chips.push({ text: "riichi", on: true });
       if (s.ippatsu) chips.push({ text: "ippatsu", on: true });
       if (s.dora_in_hand && s.dora_in_hand.length) {
@@ -562,7 +644,10 @@
       const detail = document.getElementById("detail");
       const d = state.diverges.find((x) => x.index === state.selected);
       if (!d) {
-        detail.replaceChildren(el("p", { className: "empty" }, "Select a diverge turn."));
+        detail.replaceChildren(
+          el("p", { className: "empty" }, "Select a diverge turn."),
+          yakumanBubble(YAKUMAN_INTRO, { intro: true, pose: "idle" })
+        );
         return;
       }
 
@@ -618,9 +703,9 @@
       if (preferred) {
         whyBox.append(renderWhy(preferred));
       } else if (state.loadingOffline[d.index]) {
-        whyBox.append(
-          el("div", { className: "why-box" }, el("div", { className: "summary" }, "Building explanation…"))
-        );
+        whyBox.append(yakumanBubble("Building explanation…", { pose: "talk" }));
+      } else {
+        whyBox.append(yakumanBubble(YAKUMAN_INTRO, { intro: true, pose: "idle" }));
       }
 
       const err = el("div", { className: "err", id: "why-err" });
@@ -659,10 +744,22 @@
       }
       const ukeireTiles = d.ukeire_tiles || [];
       if (ukeireTiles.length) {
+        const furiten = !!(d.statuses && d.statuses.furiten);
+        const blocking = d.furiten_blocking_tiles || [];
         boardInner.append(
           el("div", { className: "section-label" }, `Waits / ukeire (${d.ukeire ?? ukeireTiles.length})`),
-          tileRow(ukeireTiles)
+          tileRow(ukeireTiles, {
+            furitenAll: furiten,
+            furitenTiles: blocking,
+          })
         );
+        if (furiten) {
+          const note =
+            blocking.length > 0
+              ? `Furiten for ron — discarded ${blocking.join(", ")}; can’t win on any discard (tsumo only)`
+              : "Furiten for ron — can’t win on any discard (tsumo only)";
+          boardInner.append(el("div", { className: "furiten-note" }, note));
+        }
       }
 
       const boardDetails = el(
@@ -682,7 +779,7 @@
         strip,
         aiming,
         moves,
-        el("div", { className: "section-label" }, "Explanation"),
+        el("div", { className: "section-label" }, "Yakuman says"),
         el("div", { className: "why-actions" }, whyBtn, offlineWrap),
         err,
         whyBox,
@@ -690,14 +787,42 @@
       );
     }
 
+    function yakumanBubble(summary, opts = {}) {
+      const pose = opts.pose === "talk" ? "talk" : "idle";
+      const box = el(
+        "div",
+        { className: "why-box" + (opts.intro ? " yakuman-intro" : "") },
+        el("div", { className: "focus" }, "Yakuman"),
+        el("div", { className: "summary" }, summary || "")
+      );
+      return el(
+        "div",
+        { className: "yakuman-row" },
+        el("img", {
+          className: "yakuman-face",
+          src: pose === "talk" ? "/yakuman_talk.png" : "/yakuman_idle.png",
+          alt: "Yakuman",
+          width: "56",
+          height: "56",
+        }),
+        box
+      );
+    }
+
     function renderWhy(payload) {
-      const box = el("div", { className: "why-box" });
       const exp = payload.explanation || {};
+      const row = yakumanBubble(exp.summary || "", { pose: "talk" });
+      const box = row.querySelector(".why-box");
       if (payload.source === "template") {
-        box.append(el("div", { className: "source-badge" }, "offline template"));
+        box.insertBefore(
+          el("div", { className: "source-badge" }, "offline template"),
+          box.firstChild
+        );
       }
-      if (exp.focus) box.append(el("div", { className: "focus" }, exp.focus));
-      box.append(el("div", { className: "summary" }, exp.summary || ""));
+      if (exp.focus) {
+        const focus = box.querySelector(".focus");
+        if (focus) focus.textContent = exp.focus;
+      }
       if (exp.detail) {
         const detailEl = el("div", { className: "detail-text", hidden: "hidden" }, exp.detail);
         const moreBtn = el(
@@ -729,7 +854,7 @@
           )
         );
       }
-      return box;
+      return row;
     }
 
     function showOfflineButton(index) {
@@ -829,8 +954,10 @@
         meta.textContent = `${data.log_id || "report"} · ${data.diverge_count} diverges`;
         renderList();
         if (state.diverges.length) selectDiverge(state.diverges[0].index);
+        else renderDetail();
       } catch (e) {
         meta.textContent = e.message || String(e);
+        renderDetail();
       }
     }
 

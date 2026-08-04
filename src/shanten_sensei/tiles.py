@@ -149,7 +149,7 @@ def human_action_label(action: str) -> str:
 
 
 def parse_action_kind(action: str) -> str:
-    """Classify an action label: none / dahai / pon / chi / kan / reach / other."""
+    """Classify an action label: none / dahai / pon / chi / kan / reach / hora / other."""
     a = action.strip()
     if a == "none":
         return "none"
@@ -157,6 +157,8 @@ def parse_action_kind(action: str) -> str:
         return "dahai"
     if a == "reach":
         return "reach"
+    if a == "hora":
+        return "hora"
     if a in ("chi_low", "chi_mid", "chi_high") or a.startswith("chi "):
         return "chi"
     if a == "pon" or a.startswith("pon "):
@@ -189,6 +191,10 @@ def is_call_decision_action(action: str) -> bool:
 
 def is_riichi_decision_action(action: str) -> bool:
     return parse_action_kind(action) == "reach"
+
+
+def is_hora_decision_action(action: str) -> bool:
+    return parse_action_kind(action) == "hora"
 
 
 def call_family(action: str) -> str | None:
@@ -226,6 +232,8 @@ def coach_action_label(action: str) -> str:
         return human_action_label(action)
     if kind == "reach":
         return "Declare riichi"
+    if kind == "hora":
+        return "Take the win"
     return human_action_label(action)
 
 

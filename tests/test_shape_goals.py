@@ -260,6 +260,27 @@ def test_infer_not_pinfu_with_dragon_pair():
     assert "pinfu" not in goals
 
 
+def test_infer_not_pinfu_with_one_triplet():
+    # Sequences + pair + one non-value triplet — not pinfu
+    hand = [
+        "1m",
+        "2m",
+        "3m",
+        "5m",
+        "6m",
+        "7m",
+        "5p",
+        "5p",
+        "8p",
+        "8p",
+        "8p",
+        "7s",
+        "8s",
+        "9s",
+    ]
+    assert "pinfu" not in infer_shape_goals(hand)
+
+
 def test_infer_ittsu_two_blocks():
     # 123 + 456 in sou, mixed other suits — under-tag ittsu
     hand = [

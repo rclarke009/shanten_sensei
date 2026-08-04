@@ -74,6 +74,8 @@ def test_api_review_list_no_explanations(session_and_server):
         label = first["danger_labels"].get(tile, "")
         assert tag in label
         assert "(" in label  # glossed parenthetical
+    assert "furiten_label" in first
+    assert isinstance(first.get("furiten_blocking_tiles"), list)
     assert "explanation" not in first
     for d in data["diverges"]:
         assert "explanation" not in d
@@ -82,6 +84,7 @@ def test_api_review_list_no_explanations(session_and_server):
         assert "calls" in d
         assert "aiming_for" in d
         assert "danger_labels" in d
+        assert "furiten_label" in d
 
 
 def test_api_explain_caches_and_pins(session_and_server):
@@ -162,3 +165,13 @@ def test_get_index_serves_html(session_and_server):
     assert "Shanten Sensei" in resp.text
     assert "Why?" in resp.text
     assert "Offline explanation" in resp.text
+    assert "Yakuman" in resp.text
+    assert "/yakuman_idle.png" in resp.text
+
+
+def test_get_yakuman_sprite(session_and_server):
+    _session, base, _calls = session_and_server
+    resp = httpx.get(f"{base}/yakuman_idle.png", timeout=5.0)
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "image/png"
+    assert resp.content[:8] == b"\x89PNG\r\n\x1a\n"

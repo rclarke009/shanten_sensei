@@ -11,6 +11,7 @@ from typing import Any, Callable, Literal
 from urllib.parse import parse_qs, urlparse
 
 from shanten_sensei.explain import (
+    _furiten_blocking_tiles,
     coaching_shape_goals,
     explain_llm,
     template_explain,
@@ -21,6 +22,7 @@ from shanten_sensei.glosses import (
     YAKU_REFERENCE_URL,
     format_aiming_for,
     glossed_danger,
+    glossed_furiten,
     glossed_shanten,
     glossed_wait,
 )
@@ -123,6 +125,7 @@ class ReviewSession:
         statuses = turn.features.statuses
         wait_shape = statuses.wait_shape
         shanten = turn.features.shanten
+        blocking = _furiten_blocking_tiles(turn)
         return {
             "index": d.index,
             "kyoku": d.kyoku,
@@ -146,6 +149,11 @@ class ReviewSession:
             "yaku_reference_url": YAKU_REFERENCE_URL,
             "yaku_reference_label": YAKU_REFERENCE_LABEL,
             "statuses": statuses.model_dump(),
+            "furiten_label": glossed_furiten(
+                furiten=bool(statuses.furiten),
+                temporary=bool(statuses.temporary_furiten),
+            ),
+            "furiten_blocking_tiles": list(blocking),
             "danger": turn.features.danger,
             "danger_labels": {
                 tile: glossed_danger(tag) or tag
@@ -172,6 +180,10 @@ def make_handler(
                 return
             if path in ("/", "/index.html"):
                 self._file(web_root / "review.html", "text/html; charset=utf-8")
+                return
+            if path in ("/yakuman_idle.png", "/yakuman_talk.png"):
+                name = path.lstrip("/")
+                self._file(web_root / name, "image/png")
                 return
             self._json(404, {"error": "not found"})
 

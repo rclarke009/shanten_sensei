@@ -92,6 +92,46 @@ def test_turn_from_live_visible_discards_adjust_ukeire():
     assert turn.features.ukeire.remaining_by_tile["4s"] == 1
 
 
+def test_turn_from_live_discards_fallback_from_seat_river():
+    hand = [
+        "1m", "2m", "3m", "4m", "5m", "6m",
+        "1p", "2p", "3p", "9p",
+        "4s", "5s", "6s", "7s",
+    ]
+    turn = turn_from_live(
+        hand=hand,
+        recommended="dahai 9p",
+        candidates=[MortalCandidate(action="dahai 9p", prob=1.0)],
+        visible_discards={"0": ["7s", "1m"], "1": ["4s"]},
+        player_seat=0,
+    )
+    assert turn.game_state.discards == ["7s", "1m"]
+    assert turn.features.statuses.furiten is True
+
+
+def test_turn_from_live_reach_cut_tile_sets_waits_and_furiten():
+    hand = [
+        "1m", "2m", "3m", "4m", "5m", "6m",
+        "1p", "2p", "3p", "9p",
+        "4s", "5s", "6s", "7s",
+    ]
+    turn = turn_from_live(
+        hand=hand,
+        recommended={
+            "type": "reach",
+            "actor": 0,
+            "reach_dahai": {"type": "dahai", "pai": "9p", "actor": 0},
+        },
+        candidates=candidates_from_meta_options([("reach", 0.9), ("9p", 0.1)]),
+        discards=["7s"],
+    )
+    assert turn.mortal_best == "reach"
+    assert turn.features.statuses.tenpai is True
+    assert set(turn.features.ukeire.tiles) == {"4s", "7s"}
+    assert turn.features.statuses.furiten is True
+    assert turn.features.ukeire.count > 0
+
+
 def test_turn_from_live_with_reaction_dict():
     turn = turn_from_live(
         hand=LIVE_HAND,

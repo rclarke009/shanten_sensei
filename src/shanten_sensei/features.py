@@ -599,7 +599,8 @@ def _looks_like_pinfu(
         if counts[tile_to_34(tile)] >= 1:
             return False
     triplets = sum(1 for c in counts if c >= 3)
-    if triplets >= 2:
+    # Any triplet/pon rules out pinfu (all-sequences).
+    if triplets >= 1:
         return False
     pairish = sum(1 for c in counts if c >= 2)
     if pairish >= 5:
