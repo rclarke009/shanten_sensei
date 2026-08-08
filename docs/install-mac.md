@@ -8,15 +8,15 @@ Practice / friend / vs-AI only — **not for ranked**.
 
 | Method | When to use |
 |--------|-------------|
-| **[Install-Shanten-Sensei.command](https://github.com/rclarke009/shanten-sensei-overlay/releases/latest)** | **Easiest** — download this one file from Releases, double-click |
+| **[Install-Shanten-Sensei.zip](https://github.com/rclarke009/shanten-sensei-overlay/releases/latest)** | **Easiest** — unzip, double-click the `.command` inside |
 | **[Download .dmg](https://github.com/rclarke009/shanten-sensei-overlay/releases)** | Manual drag-to-Applications install |
 | **[One-click installer](https://github.com/rclarke009/shanten-sensei-overlay/blob/main/scripts/install-macos.command)** | From a cloned overlay repo before a Release exists |
 | **[Developer setup](live-setup.md)** | Contributing or Chromium / from-source |
 
 ### Download path (recommended)
 
-1. Open [overlay Releases](https://github.com/rclarke009/shanten-sensei-overlay/releases/latest) and download **`Install-Shanten-Sensei.command`** (one file — ignore the rest unless you want license docs).
-2. Double-click it (right-click → **Open** if macOS blocks it the first time).
+1. Open [overlay Releases](https://github.com/rclarke009/shanten-sensei-overlay/releases/latest) and download **`Install-Shanten-Sensei.zip`**.
+2. Unzip it, then double-click **`Install-Shanten-Sensei.command`** (right-click → **Open** if macOS blocks it).
 3. It installs **Shanten Sensei** to Applications and opens the app. Complete the **first-run wizard** (bundled Mortal model, Safari companion, optional API key).
 4. Play Majsoul in **Safari**, join friend / practice / vs-AI, press **Why?** in the coach window.
 
