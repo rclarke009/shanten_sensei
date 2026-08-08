@@ -68,15 +68,15 @@ def hand_without_discard(hand: list[str], discard: str) -> list[str]:
     raise ValueError(f"discard {discard!r} not in hand {hand}")
 
 
-def simulate_shanten_after_call(
+def _post_call_hand(
     hand: list[str],
     call_action: str,
     *,
     num_melds: int = 0,
     consumed: list[str] | None = None,
     call_tile: str | None = None,
-) -> int | None:
-    """Shanten after pon/chi/kan when consumables are known; else None."""
+) -> list[str] | None:
+    """Closed hand after pon/chi/kan when consumables are known; else None."""
     kind = parse_action_kind(call_action)
     if kind not in ("pon", "chi", "kan"):
         return None
@@ -97,16 +97,15 @@ def simulate_shanten_after_call(
             )
             for t in to_remove:
                 working = hand_without_discard(working, t)
-            return calculate_shanten(working, num_melds + 1)
+            return working
 
         if kind == "chi":
             if not consumed or len(consumed) < 2:
                 return None
             for t in consumed[:2]:
                 working = hand_without_discard(working, t)
-            return calculate_shanten(working, num_melds + 1)
+            return working
 
-        # kan: remove 3 from hand (daiminkan) when we know the tile
         if not tile:
             return None
         to_remove = (
@@ -116,9 +115,73 @@ def simulate_shanten_after_call(
         )
         for t in to_remove:
             working = hand_without_discard(working, t)
+        return working
+    except ValueError:
+        return None
+
+
+def simulate_shanten_after_call(
+    hand: list[str],
+    call_action: str,
+    *,
+    num_melds: int = 0,
+    consumed: list[str] | None = None,
+    call_tile: str | None = None,
+) -> int | None:
+    """Shanten after pon/chi/kan when consumables are known; else None."""
+    working = _post_call_hand(
+        hand,
+        call_action,
+        num_melds=num_melds,
+        consumed=consumed,
+        call_tile=call_tile,
+    )
+    if working is None:
+        return None
+    try:
         return calculate_shanten(working, num_melds + 1)
     except ValueError:
         return None
+
+
+def simulate_open_ukeire_after_call(
+    hand: list[str],
+    call_action: str,
+    *,
+    num_melds: int = 0,
+    consumed: list[str] | None = None,
+    call_tile: str | None = None,
+    visible_tiles: list[str] | None = None,
+) -> int | None:
+    """Best-effort max ukeire after call plus discard when consumables are known."""
+    working = _post_call_hand(
+        hand,
+        call_action,
+        num_melds=num_melds,
+        consumed=consumed,
+        call_tile=call_tile,
+    )
+    if working is None:
+        return None
+    seen: set[str] = set()
+    best: int | None = None
+    for tile in working:
+        base = deaka(normalize_tile(tile))
+        if base in seen:
+            continue
+        seen.add(base)
+        try:
+            info = calculate_ukeire(
+                working,
+                num_melds + 1,
+                after_discard=base,
+                visible_tiles=visible_tiles,
+            )
+            if best is None or info.count > best:
+                best = info.count
+        except ValueError:
+            continue
+    return best
 
 
 def build_call_tradeoff(
@@ -130,6 +193,7 @@ def build_call_tradeoff(
     call_action: str | None,
     consumed: list[str] | None = None,
     call_tile: str | None = None,
+    visible_tiles: list[str] | None = None,
 ) -> CallTradeoff | None:
     """Build open-vs-closed tradeoff when a call action is in play."""
     if not call_action or not is_call_action(call_action):
@@ -143,11 +207,20 @@ def build_call_tradeoff(
         consumed=consumed,
         call_tile=call_tile,
     )
+    open_ukeire_count = simulate_open_ukeire_after_call(
+        hand,
+        call_action,
+        num_melds=num_melds,
+        consumed=consumed,
+        call_tile=call_tile,
+        visible_tiles=visible_tiles,
+    )
     return CallTradeoff(
         call_action=call_action,
         stay_closed_shanten=stay_closed_shanten,
         stay_closed_ukeire=stay_closed_ukeire,
         open_shanten=open_shanten,
+        open_ukeire_count=open_ukeire_count,
         opens_hand=menzen,
     )
 
@@ -358,6 +431,45 @@ def danger_rank(tag: str | None) -> int:
     if not tag:
         return 0
     return _DANGER_RANK.get(tag, 0)
+
+
+def genbutsu_discarders(
+    tile: str,
+    visible_discards: dict[str, list[str]] | None,
+    *,
+    exclude_seat: str | int | None = None,
+) -> list[str]:
+    """Seat ids whose river contains tile (optionally excluding the player's seat)."""
+    base = deaka(normalize_tile(tile))
+    exclude = str(exclude_seat) if exclude_seat is not None else None
+    seats: list[str] = []
+    for seat, river in (visible_discards or {}).items():
+        seat_s = str(seat)
+        if exclude is not None and seat_s == exclude:
+            continue
+        if any(deaka(normalize_tile(t)) == base for t in river):
+            seats.append(seat_s)
+    return sorted(seats)
+
+
+def build_danger_detail(
+    danger: dict[str, str],
+    visible_discards: dict[str, list[str]] | None = None,
+    *,
+    exclude_seat: str | int | None = None,
+) -> dict[str, dict]:
+    """Compact per-tile danger facts for templates / LLM (genbutsu seats)."""
+    detail: dict[str, dict] = {}
+    for tile, tag in danger.items():
+        entry: dict = {"tag": tag, "seats": []}
+        if tag == "genbutsu":
+            entry["seats"] = genbutsu_discarders(
+                tile,
+                visible_discards,
+                exclude_seat=exclude_seat,
+            )
+        detail[tile] = entry
+    return detail
 
 
 def build_score_situation(
@@ -846,6 +958,14 @@ def extract_features(
         visible_tiles=visible_tiles,
     )
 
+    ctx = context or {}
+    exclude_seat = ctx.get("self_seat")
+    danger_detail = build_danger_detail(
+        danger,
+        visible_discards,
+        exclude_seat=exclude_seat,
+    )
+
     shape_goals = infer_shape_goals(
         shape_hand,
         calls=calls,
@@ -867,7 +987,8 @@ def extract_features(
         ukeire_alt=ukeire_alt,
         statuses=statuses,
         danger=danger,
-        context=context or {},
+        danger_detail=danger_detail,
+        context=ctx,
         shape_goals=shape_goals,
         hand_shape_notes=hand_shape_notes,
     )

@@ -64,10 +64,16 @@ def test_glossed_shanten():
 
 
 def test_danger_gloss():
-    assert DANGER_GLOSS["suji"] == "interval-safe vs a common wait"
-    assert DANGER_GLOSS["one-chance"] == "middle tile almost all out"
-    assert glossed_danger("suji") == "suji (interval-safe vs a common wait)"
-    assert glossed_danger("genbutsu") == "genbutsu (safe — already discarded)"
+    assert "edge" in DANGER_GLOSS["suji"]
+    assert "already" in DANGER_GLOSS["suji"]
+    assert "middle tile" in DANGER_GLOSS["one-chance"]
+    assert "unlikely" in DANGER_GLOSS["one-chance"]
+    assert "edge" in glossed_danger("suji")
+    assert "already discarded" in DANGER_GLOSS["genbutsu"]
+    assert "can't ron" in DANGER_GLOSS["genbutsu"]
+    assert glossed_danger("genbutsu") == (
+        "genbutsu (safe — opponent already discarded it, so they can't ron it)"
+    )
     assert glossed_danger(None) is None
 
 

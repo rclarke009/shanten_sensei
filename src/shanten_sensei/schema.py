@@ -40,6 +40,7 @@ class CallTradeoff(BaseModel):
     stay_closed_shanten: int
     stay_closed_ukeire: int
     open_shanten: int | None = None
+    open_ukeire_count: int | None = None
     opens_hand: bool = True
 
 
@@ -104,6 +105,10 @@ class DerivedFeatures(BaseModel):
     )
     statuses: HandStatuses
     danger: dict[str, str] = Field(default_factory=dict)
+    danger_detail: dict[str, dict[str, Any]] = Field(
+        default_factory=dict,
+        description="Per-tile danger tag plus opponent discarder seats for genbutsu",
+    )
     context: dict[str, Any] = Field(default_factory=dict)
     shape_goals: list[str] = Field(
         default_factory=list,

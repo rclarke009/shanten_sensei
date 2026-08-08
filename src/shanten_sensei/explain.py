@@ -14,7 +14,7 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-from shanten_sensei.features import danger_rank
+from shanten_sensei.features import danger_rank, genbutsu_discarders
 from shanten_sensei.glosses import DANGER_GLOSS as _DANGER_GLOSS
 from shanten_sensei.glosses import GOAL_GLOSS as _GOAL_GLOSS
 from shanten_sensei.glosses import SHAPE_NOTE_GLOSS as _SHAPE_NOTE_GLOSS
@@ -44,6 +44,7 @@ from shanten_sensei.tiles import (
 )
 
 ALLOWED_FOCUS = frozenset({"efficiency", "defense", "value", "tempo", "mixed"})
+SUMMARY_WORD_LIMIT = 130
 
 SYSTEM_PROMPT = """\
 You are a beginner-friendly riichi mahjong coach. You explain Mortal’s \
@@ -51,9 +52,12 @@ recommendation using only the game state, Mortal scores, and derived features \
 provided. You do not invent better moves. If the player’s move differs, say why \
 Mortal’s choice is better in efficiency, safety, or point situation. If this is \
 a live pre-decision turn (diverge is false / player_action equals mortal_best), \
-explain why Mortal’s top pick beats the next-best candidate. One or two \
-sentences. Plain English. Never open with \"Mortal recommends\" or \
-\"Mortal prefers\". Never use bare honor letters F/C/P or bare suit codes like \
+explain why Mortal’s top pick beats the next-best candidate. Write three or four \
+short sentences in plain English: (1) the action, (2) the main reason—efficiency, \
+defense, or value, (3) a secondary grounded fact—shape, call tradeoff, or wall \
+detail, and (4) optional point situation or furiten when present. Never open with \
+"Mortal recommends" or \
+"Mortal prefers". Never use bare honor letters F/C/P or bare suit codes like \
 5s when naming tiles for the player. Never recommend an action other than \
 mortal_best.
 
@@ -65,7 +69,8 @@ call_tradeoff), lead with \"Skip\" / \"Skip the pon on …\" / \"Skip the chi on
 \"Call pon on …, don’t skip\" / \"Chi …, don’t skip\" — never \"Throw none\" or \
 \"Throw pon\". The call verb must match mortal_best kind (pon vs chi vs kan). Cite \
 call_tradeoff when present: opening loses riichi; open_shanten vs stay-closed \
-shanten; shape_goals (e.g. still aiming for tanyao while holding terminals). \
+shanten; open_ukeire_count vs stay_closed_ukeire when present; shape_goals \
+(e.g. still aiming for tanyao while holding terminals). \
 When recommending a call that opens the hand, do not say the hand is still \
 aiming for closed-only yaku (pinfu, chiitoi / seven pairs)—cite tempo, \
 shanten, or call_tradeoff instead.
@@ -83,9 +88,15 @@ yaku aims for a finished hand.
 
 When danger tags a safer cut (genbutsu / suji / one-chance with \
 danger_glossary parentheticals), prefer a defense sentence over bare \
-efficiency. Genbutsu / \"already discarded\" / \"already been played\" must name \
-the danger-tagged tile (usually mortal_best)—never the alternate cut unless \
-that alternate is also tagged genbutsu. When score_situation is present, you may \
+efficiency. When danger is genbutsu, explain the rule: an opponent already \
+discarded that tile, so they can't ron it from you — not jargon alone. For \
+suji, explain that edge waits in that suit likely already discarded this tile. \
+For one-chance, explain that the middle tile is nearly all out. You may \
+say \"the riichi player\" only when danger_detail seats show a riichi opponent \
+discarded it; otherwise say \"an opponent.\" Genbutsu / \"already discarded\" / \
+\"already been played\" / \"can't ron\" must name the danger-tagged tile \
+(usually mortal_best)—never the alternate cut unless that alternate is also \
+tagged genbutsu. When score_situation is present, you may \
 add one short point-situation line (opponent riichi, leading/trailing/even, late \
 wall).
 
@@ -365,6 +376,11 @@ def _feature_anchors_in_summary(turn: TurnExplainInput, summary_l: str) -> list[
         or re.search(r"\bsuji\b", summary_l)
         or re.search(r"\bone-chance\b", summary_l)
         or re.search(r"\bone chance\b", summary_l)
+        or re.search(r"\bcan'?t\s+ron\b", summary_l)
+        or (
+            re.search(r"\balready\s+discarded\b", summary_l)
+            and not re.search(r"\bfuriten\b", summary_l)
+        )
     ):
         anchors.append("danger")
 
@@ -549,6 +565,7 @@ def build_user_payload(turn: TurnExplainInput) -> dict[str, Any]:
             else None
         ),
         "danger": turn.features.danger,
+        "danger_detail": turn.features.danger_detail,
         "danger_glossary": {
             tag: _DANGER_GLOSS[tag]
             for tag in sorted(set(turn.features.danger.values()))
@@ -633,6 +650,83 @@ def _join_summary_paragraphs(first: list[str], second: list[str]) -> str:
     if a and b:
         return f"{a}\n{b}"
     return a or b
+
+
+def _format_tile_list(labels: list[str]) -> str:
+    if not labels:
+        return ""
+    if len(labels) == 1:
+        return labels[0]
+    if len(labels) == 2:
+        return f"{labels[0]} and {labels[1]}"
+    return ", ".join(labels[:-1]) + f", and {labels[-1]}"
+
+
+def _named_improving_tiles_sentence(turn: TurnExplainInput) -> str | None:
+    """Name example improving tiles when ukeire contrast is large."""
+    ukeire = turn.features.ukeire
+    alt = turn.features.ukeire_alt
+    if alt is None or ukeire.count - alt.count < 3:
+        return None
+    if len(ukeire.tiles) < 2:
+        return None
+    best_raw = _action_tile_token_raw(turn.mortal_best)
+    alt_action = _contrast_alt_action(turn)
+    alt_raw = _action_tile_token_raw(alt_action) if alt_action else None
+    best_label = human_tile_label(best_raw) if best_raw else "this cut"
+    alt_label = human_tile_label(alt_raw) if alt_raw else "the alternate"
+    best_named = _format_tile_list(
+        [human_tile_label(t) for t in ukeire.tiles[:4]]
+    )
+    lead = f"Throwing {best_label} keeps draws like {best_named}"
+    if alt.tiles and len(alt.tiles) >= 2:
+        alt_named = _format_tile_list(
+            [human_tile_label(t) for t in alt.tiles[:4]]
+        )
+        return f"{lead}; throwing {alt_label} mostly improves via {alt_named}"
+    return lead
+
+
+def _thin_wall_sentence(turn: TurnExplainInput) -> str | None:
+    """Thin-wall note when key improving tiles are nearly exhausted."""
+    ukeire = turn.features.ukeire
+    remaining = ukeire.remaining_by_tile
+    thin_in_ukeire = [
+        (t, n) for t, n in remaining.items() if n <= 1 and t in ukeire.tiles
+    ]
+    if not thin_in_ukeire:
+        return None
+    thin_in_ukeire.sort(key=lambda x: (x[1], x[0]))
+    tile, n = thin_in_ukeire[0]
+    label = human_tile_label(tile)
+    detail = f"{label} already out" if n <= 0 else f"only {n}× {label} left"
+    if len(thin_in_ukeire) >= 2:
+        return f"Several improving tiles are already out ({detail})"
+    return f"Improving tiles are thinning ({detail})"
+
+
+def _merge_detail_into_summary(summary: str, detail: str | None) -> str:
+    """Append grounded detail sentences not already covered in summary."""
+    if not detail:
+        return summary
+    summary_l = summary.lower()
+    extras: list[str] = []
+    for chunk in detail.rstrip(".").split(". "):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        if chunk.lower() in summary_l:
+            continue
+        probe = chunk[:40].lower()
+        if probe in summary_l:
+            continue
+        extras.append(chunk)
+    if not extras:
+        return summary
+    merged = _join_sentence_list(extras)
+    if "\n" in summary:
+        return f"{summary}\n{merged}"
+    return f"{summary}\n{merged}"
 
 
 def _yakuhai_value_tiles(context: dict[str, Any] | None) -> set[str]:
@@ -831,8 +925,10 @@ def build_detail_paragraph(turn: TurnExplainInput) -> str | None:
 def _finalize_explanation(
     turn: TurnExplainInput, explanation: Explanation
 ) -> Explanation:
-    """Attach grounded detail paragraph without changing the short summary."""
-    return explanation.model_copy(update={"detail": build_detail_paragraph(turn)})
+    """Merge grounded detail into summary; keep detail for review API."""
+    detail = build_detail_paragraph(turn)
+    summary = _merge_detail_into_summary(explanation.summary, detail)
+    return explanation.model_copy(update={"summary": summary, "detail": detail})
 
 
 def _midhand_shape_clause(
@@ -951,6 +1047,93 @@ def _append_score_situation(
     return focus
 
 
+def _riichi_opponent_seats(turn: TurnExplainInput) -> set[str]:
+    """Absolute seat ids in riichi, excluding self when self_seat is known."""
+    flags = turn.game_state.riichi_flags
+    if not flags:
+        return set()
+    self_seat = turn.features.context.get("self_seat")
+    if self_seat is None:
+        return set()
+    self_s = str(self_seat)
+    return {
+        str(i)
+        for i, reached in enumerate(flags)
+        if reached and str(i) != self_s
+    }
+
+
+def _genbutsu_discarder_seats(
+    turn: TurnExplainInput, tile_code: str
+) -> list[str]:
+    """Opponent seats that discarded tile (from danger_detail or rivers)."""
+    detail = turn.features.danger_detail.get(tile_code) or {}
+    seats = detail.get("seats")
+    if isinstance(seats, list) and seats:
+        return [str(s) for s in seats]
+    # Also try deaka key
+    base = deaka(normalize_tile(tile_code))
+    detail = turn.features.danger_detail.get(base) or {}
+    seats = detail.get("seats")
+    if isinstance(seats, list) and seats:
+        return [str(s) for s in seats]
+    exclude = turn.features.context.get("self_seat")
+    return genbutsu_discarders(
+        tile_code,
+        turn.game_state.visible_discards,
+        exclude_seat=exclude,
+    )
+
+
+def _genbutsu_teaching_sentence(
+    turn: TurnExplainInput,
+    tile_code: str,
+    tile_label: str,
+) -> str:
+    """Beginner teaching clause for a genbutsu cut."""
+    discarders = set(_genbutsu_discarder_seats(turn, tile_code))
+    riichi_opps = _riichi_opponent_seats(turn)
+    if discarders and (discarders & riichi_opps):
+        return (
+            f"The riichi player already discarded {tile_label}, "
+            f"so they can't ron it"
+        )
+    return (
+        f"An opponent already discarded {tile_label}, "
+        f"so they can't ron it from you"
+    )
+
+
+def _suji_teaching_sentence(tile_label: str) -> str:
+    return (
+        f"{tile_label} is suji—if someone waited on the edge tiles in that "
+        f"suit, they'd likely have discarded {tile_label} already"
+    )
+
+
+def _one_chance_teaching_sentence(tile_label: str) -> str:
+    return (
+        f"{tile_label} is one-chance—the middle tile is nearly all out, "
+        f"so a closed middle wait is unlikely"
+    )
+
+
+def _danger_teaching_sentence(
+    turn: TurnExplainInput,
+    tag: str,
+    tile_code: str | None,
+    tile_label: str,
+) -> str:
+    if tag == "genbutsu" and tile_code:
+        return _genbutsu_teaching_sentence(turn, tile_code, tile_label)
+    if tag == "suji":
+        return _suji_teaching_sentence(tile_label)
+    if tag == "one-chance":
+        return _one_chance_teaching_sentence(tile_label)
+    glossed = _glossed_danger(tag) or tag
+    return f"{tile_label} is {glossed}"
+
+
 def _danger_compare_sentences(
     turn: TurnExplainInput,
     *,
@@ -971,19 +1154,39 @@ def _danger_compare_sentences(
     nudge: Focus | None = None
 
     if best_r > player_r and best_tag:
-        glossed = _glossed_danger(best_tag) or best_tag
-        if player != best and player_code:
-            out.append(f"{best_tile} is {glossed}. {player_tile} isn't")
+        if best_tag in ("genbutsu", "suji", "one-chance") and best_code:
+            out.append(
+                _danger_teaching_sentence(
+                    turn, best_tag, best_code, best_tile
+                )
+            )
         else:
-            out.append(f"{best_tile} is {glossed}")
+            glossed = _glossed_danger(best_tag) or best_tag
+            if player != best and player_code:
+                out.append(f"{best_tile} is {glossed}. {player_tile} isn't")
+            else:
+                out.append(f"{best_tile} is {glossed}")
         nudge = "defense"
     elif player_tag and player != best and player_r >= best_r:
-        glossed = _glossed_danger(player_tag) or player_tag
-        out.append(f"{player_tile} is {glossed} but efficiency is worse")
+        if player_tag in ("genbutsu", "suji", "one-chance") and player_code:
+            teaching = _danger_teaching_sentence(
+                turn, player_tag, player_code, player_tile
+            )
+            out.append(f"{teaching}, but efficiency is worse")
+        else:
+            glossed = _glossed_danger(player_tag) or player_tag
+            out.append(f"{player_tile} is {glossed} but efficiency is worse")
         nudge = "mixed"
     elif best_tag:
-        glossed = _glossed_danger(best_tag) or best_tag
-        out.append(f"{best_tile} is also {glossed}")
+        if best_tag in ("genbutsu", "suji", "one-chance") and best_code:
+            out.append(
+                _danger_teaching_sentence(
+                    turn, best_tag, best_code, best_tile
+                )
+            )
+        else:
+            glossed = _glossed_danger(best_tag) or best_tag
+            out.append(f"{best_tile} is also {glossed}")
         nudge = "defense"
 
     return out, nudge
@@ -1037,11 +1240,21 @@ def _template_explain_call(turn: TurnExplainInput) -> Explanation:
         if tradeoff is not None and tradeoff.opens_hand:
             open_note = "Calling would open the hand—no riichi"
             if (
+                tradeoff.open_ukeire_count is not None
+                and tradeoff.open_ukeire_count < tradeoff.stay_closed_ukeire
+            ):
+                open_note += (
+                    f", and only about {tradeoff.open_ukeire_count} tiles would "
+                    f"still improve it vs about {tradeoff.stay_closed_ukeire} closed"
+                )
+            elif (
                 tradeoff.open_shanten is not None
                 and tradeoff.open_shanten >= tradeoff.stay_closed_shanten
             ):
                 open_note += ", and it doesn’t get you closer to ready"
             state_sents.append(open_note)
+        if shanten is not None and shanten > 0:
+            state_sents.append("You’re not in tenpai yet and can still improve closed")
         if "tanyao" in turn.features.shape_goals and _hand_has_terminals_or_honors(
             turn.game_state.hand
         ):
@@ -1062,14 +1275,24 @@ def _template_explain_call(turn: TurnExplainInput) -> Explanation:
         if parse_action_kind(best) == "pon" and tile and (
             "yakuhai" in coached_goals or tile in dragons
         ):
-            state_sents.append("That locks a yakuhai triplet")
+            state_sents.append(
+                "That locks a yakuhai triplet for a guaranteed yaku when you win"
+            )
             focus = "value"
+        if parse_action_kind(best) == "chi" and (
+            tradeoff is not None
+            and tradeoff.open_shanten is not None
+            and tradeoff.open_shanten < tradeoff.stay_closed_shanten
+        ):
+            state_sents.append("That completes a sequence and gets you closer open")
         if (
             tradeoff is not None
             and tradeoff.open_shanten is not None
             and tradeoff.open_shanten < tradeoff.stay_closed_shanten
         ):
-            state_sents.append("That gets you closer than staying closed")
+            state_sents.append(
+                f"That drops you to {_glossed_shanten_phrase(tradeoff.open_shanten)} open"
+            )
             if focus == "efficiency":
                 focus = "tempo"
         dropped_closed = recommending_open_call(turn) and any(
@@ -1274,25 +1497,30 @@ def template_explain(turn: TurnExplainInput) -> Explanation:
         wait_label = _glossed_wait(wait_shape) or wait_shape
         move_sents.append(f"That keeps a {wait_label} wait")
         focus = "efficiency"
-        if note_kind == "contrast" and note:
-            move_sents.append(f"That leaves {note}")
-        elif note:
-            move_sents.append(_sentence_case(note))
-    elif note_kind == "contrast" and note:
-        # Ukeire contrast first; standalone shanten follows in the state paragraph.
+
+    if note_kind == "contrast" and note:
         move_sents.append(f"That leaves {note}")
-        if shanten is not None:
-            state_sents.append(f"You’re {_glossed_shanten_phrase(shanten)}")
-    elif shanten is not None:
-        # Bundled shanten + acceptances stays with the move paragraph.
-        move_sents.append(
-            f"You’re {_glossed_shanten_phrase(shanten)} with "
-            f"{_glossed_acceptances_phrase(ukeire.count)}"
-        )
-        if note:
-            move_sents.append(_sentence_case(note))
+        named = _named_improving_tiles_sentence(turn)
+        if named:
+            move_sents.append(named)
     elif note:
         move_sents.append(_sentence_case(note))
+
+    thin_extra = _thin_wall_sentence(turn)
+    if thin_extra and not any(
+        "thinning" in s.lower() or "already out" in s.lower() for s in move_sents
+    ):
+        move_sents.append(thin_extra)
+
+    has_efficiency_lead = bool(wait_shape) or note_kind == "contrast"
+    if shanten is not None:
+        if has_efficiency_lead:
+            state_sents.append(f"You’re {_glossed_shanten_phrase(shanten)}")
+        else:
+            move_sents.append(
+                f"You’re {_glossed_shanten_phrase(shanten)} with "
+                f"{_glossed_acceptances_phrase(ukeire.count)}"
+            )
 
     goal_bit = _shape_goal_phrase(turn)
     midhand_bit = _midhand_shape_clause(turn, best_raw, best_tile)
@@ -1458,9 +1686,25 @@ def _tile_claimed_as_genbutsu_safe(summary_l: str, tile: str) -> bool:
             summary_l,
         ):
             return True
+    # Teaching voice: "already discarded East" / "can't ron East"
+    # (exclude furiten: "you already discarded 7-sou, so you can't win on…")
+    if not re.search(r"\bfuriten\b", summary_l):
+        if re.search(
+            rf"\balready\s+(?:been\s+)?(?:played|discarded)\s+{label}\b",
+            summary_l,
+        ):
+            return True
+        if re.search(
+            rf"\bcan'?t\s+(?:ron|win on)\s+{label}\b",
+            summary_l,
+        ):
+            return True
+    elif re.search(rf"\bcan'?t\s+ron\s+{label}\b", summary_l):
+        return True
     if re.search(
         rf"if you throw\s+{label}\b[^.]{{0,60}}?"
-        rf"(?:\bsafer\b|\bgenbutsu\b|\balready\s+(?:been\s+)?(?:played|discarded)\b)",
+        rf"(?:\bsafer\b|\bgenbutsu\b|\balready\s+(?:been\s+)?(?:played|discarded)\b"
+        rf"|\bcan'?t\s+ron\b)",
         summary_l,
     ):
         return True
@@ -1480,7 +1724,24 @@ def _false_genbutsu_error(turn: TurnExplainInput, summary_l: str) -> str | None:
     has_already_played = bool(
         re.search(r"\balready\s+been\s+played\b", summary_l)
     )
-    if not (has_genbutsu_word or has_safer_already or has_already_played):
+    # Furiten tips also say "already discarded" / "can't win on" — ignore those.
+    has_furiten = bool(re.search(r"\bfuriten\b", summary_l))
+    has_already_discarded = bool(
+        re.search(r"\balready\s+discarded\b", summary_l)
+    ) and not has_furiten
+    has_cant_ron = bool(re.search(r"\bcan'?t\s+ron\b", summary_l))
+    has_cant_win_on = bool(
+        re.search(r"\bcan'?t\s+win on\b", summary_l)
+    ) and not has_furiten
+    claims_genbutsu_safety = (
+        has_genbutsu_word
+        or has_safer_already
+        or has_already_played
+        or has_already_discarded
+        or has_cant_ron
+        or has_cant_win_on
+    )
+    if not claims_genbutsu_safety:
         return None
 
     for tile in _mentionable_tile_codes(turn):
@@ -1492,11 +1753,21 @@ def _false_genbutsu_error(turn: TurnExplainInput, summary_l: str) -> str | None:
     if has_genbutsu_word and gen:
         if not any(_mentions_tile(summary_l, t) for t in gen):
             return "summary mentions genbutsu without naming a genbutsu tile"
-    if (has_safer_already or has_already_played) and not gen:
+    needs_named_gen = (
+        has_safer_already
+        or has_already_played
+        or has_already_discarded
+        or has_cant_ron
+        or has_cant_win_on
+    )
+    if needs_named_gen and not gen:
         return "summary claims already-discarded safety with no genbutsu tag"
-    if (has_safer_already or has_already_played) and gen:
+    if needs_named_gen and gen:
         if not any(_mentions_tile(summary_l, t) for t in gen):
-            return "summary claims already-discarded safety without naming a genbutsu tile"
+            return (
+                "summary claims already-discarded safety "
+                "without naming a genbutsu tile"
+            )
     return None
 
 
@@ -1801,7 +2072,7 @@ def validate_explanation(turn: TurnExplainInput, explanation: Explanation) -> li
     ):
         errors.append("summary appears to recommend the player's tile over Mortal")
 
-    if len(explanation.summary.split()) > 80:
+    if len(explanation.summary.split()) > SUMMARY_WORD_LIMIT:
         errors.append("summary exceeds length budget")
 
     allowed_yaku = set(coaching_shape_goals(turn))

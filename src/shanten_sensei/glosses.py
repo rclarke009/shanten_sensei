@@ -23,9 +23,9 @@ WAIT_GLOSS: dict[str, str] = {
 }
 
 DANGER_GLOSS: dict[str, str] = {
-    "genbutsu": "safe — already discarded",
-    "suji": "interval-safe vs a common wait",
-    "one-chance": "middle tile almost all out",
+    "genbutsu": "safe — opponent already discarded it, so they can't ron it",
+    "suji": "interval-safe—if they waited on the edge, they'd likely discard this already",
+    "one-chance": "middle tile nearly all out, so a closed middle wait is unlikely",
 }
 
 SHAPE_NOTE_GLOSS: dict[str, str] = {

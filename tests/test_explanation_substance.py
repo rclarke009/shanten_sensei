@@ -584,7 +584,9 @@ def test_payload_includes_danger_glossary_and_score_situation():
         late_game=True,
     )
     payload = build_user_payload(turn)
-    assert payload["danger_glossary"]["suji"] == "interval-safe vs a common wait"
+    assert "edge" in payload["danger_glossary"]["suji"]
+    assert "already discarded" in payload["danger_glossary"]["genbutsu"]
+    assert "danger_detail" in payload
     assert payload["score_situation"]["score_diff"] == "trailing"
     assert payload["score_situation"]["late_game"] is True
 
@@ -616,20 +618,20 @@ def test_build_detail_paragraph_ukeire_danger_score():
     assert "trailing" in detail
 
 
-def test_template_explain_attaches_detail_without_changing_summary():
+def test_template_explain_merges_detail_into_summary():
     turn = _turn(
         diverge=True,
         mortal_best="dahai 9p",
         player_action="dahai 5s",
         danger={"9p": "genbutsu"},
-        ukeire=UkeireInfo(count=10, tiles=["2m"]),
+        ukeire=UkeireInfo(count=10, tiles=["2m", "3m"]),
         ukeire_alt=UkeireInfo(count=4, tiles=["2m"]),
     )
     result = template_explain(turn)
     assert result.summary
     assert result.detail is not None
+    assert "improving tiles" in result.summary
     assert "improving tiles" in result.detail
-    assert result.detail not in result.summary
     assert validate_explanation(turn, result) == []
 
 
@@ -677,12 +679,17 @@ def test_template_false_safer_tip_turn_stays_grounded():
     summary_l = result.summary.lower()
     assert "2-pin" in summary_l or "2p" in summary_l
     assert "thinning" in summary_l or "only 1" in summary_l
-    assert "genbutsu" in summary_l
+    assert "already discarded" in summary_l
+    assert "can't ron" in summary_l or "cant ron" in summary_l
     assert "2-man" in summary_l or "2m" in summary_l
     assert "already been played" not in summary_l
     # Must not claim 1-sou is the already-discarded safe cut
     assert not re.search(
         r"1-sou[^.]*already\s+(?:been\s+)?(?:played|discarded)",
+        summary_l,
+    )
+    assert not re.search(
+        r"already\s+(?:been\s+)?(?:played|discarded)\s+1-sou",
         summary_l,
     )
     assert "1 improving tile if you throw" not in summary_l
@@ -696,13 +703,52 @@ def test_grounding_accepts_correct_genbutsu_on_best_cut():
             "Throw 2-man, not 1-sou. You’re 2-shanten (2 steps from ready) with "
             "about 12 acceptances (tiles that improve the hand).\n"
             "Improving tiles are thinning (only 1× 2-pin left). "
-            "2-man is genbutsu (safe — already discarded). 1-sou isn't."
+            "An opponent already discarded 2-man, so they can't ron it from you."
         ),
         focus="defense",
         pinned_action="dahai 2m",
         contrasted_action="dahai 1s",
     )
     assert validate_explanation(turn, good) == []
+
+
+def test_template_genbutsu_teaching_voice():
+    turn = _turn(
+        diverge=True,
+        mortal_best="dahai 2m",
+        player_action="dahai 1s",
+        danger={"2m": "genbutsu"},
+    )
+    turn.game_state.visible_discards = {"1": ["2m"]}
+    turn.features.danger_detail = {"2m": {"tag": "genbutsu", "seats": ["1"]}}
+    result = template_explain(turn)
+    summary_l = result.summary.lower()
+    assert "already discarded" in summary_l
+    assert "can't ron" in summary_l or "cant ron" in summary_l
+    assert "2-man" in summary_l
+    assert "opponent" in summary_l
+    score = score_explanation_substance(turn, result.summary)
+    assert "danger" in score.anchors
+    assert validate_explanation(turn, result) == []
+
+
+def test_template_genbutsu_names_riichi_player_when_grounded():
+    turn = _turn(
+        diverge=True,
+        mortal_best="dahai E",
+        player_action="dahai 1s",
+        danger={"E": "genbutsu"},
+    )
+    turn.game_state.visible_discards = {"2": ["E"]}
+    turn.game_state.riichi_flags = [False, False, True, False]
+    turn.features.context = {"self_seat": 0}
+    turn.features.danger_detail = {"E": {"tag": "genbutsu", "seats": ["2"]}}
+    result = template_explain(turn)
+    summary_l = result.summary.lower()
+    assert "riichi player" in summary_l
+    assert "already discarded" in summary_l
+    assert "east" in summary_l
+    assert validate_explanation(turn, result) == []
 
 
 def test_grounding_accepts_real_ukeire_contrast():
@@ -986,3 +1032,60 @@ def test_grounding_rejects_isolated_kanchan_on_wrong_tile():
     errors = validate_explanation(turn, bad)
     assert any("isolated_kanchan" in e for e in errors)
     assert any("yakuhai_pairs" in e or "pair of" in e for e in errors)
+
+
+def test_template_suji_teaching_voice():
+    turn = _turn(
+        diverge=True,
+        mortal_best="dahai 4m",
+        player_action="dahai 6m",
+        danger={"4m": "suji"},
+    )
+    result = template_explain(turn)
+    summary_l = result.summary.lower()
+    assert "suji" in summary_l
+    assert "edge" in summary_l or "waited" in summary_l
+    assert validate_explanation(turn, result) == []
+
+
+def test_named_improving_tiles_on_ukeire_contrast():
+    turn = _turn(
+        diverge=False,
+        mortal_best="dahai 3m",
+        player_action="dahai 3m",
+        ukeire=UkeireInfo(
+            count=60,
+            tiles=["2m", "4m", "5m", "6m"],
+            remaining_by_tile={"2m": 4, "4m": 3, "5m": 3, "6m": 2},
+        ),
+        ukeire_alt=UkeireInfo(
+            count=18,
+            tiles=["9s", "8s"],
+            remaining_by_tile={"9s": 3, "8s": 2},
+        ),
+    )
+    turn.mortal_output.candidates = [
+        MortalCandidate(action="dahai 3m", prob=0.79),
+        MortalCandidate(action="dahai 9s", prob=0.11),
+    ]
+    result = template_explain(turn)
+    assert "keeps draws like" in result.summary.lower()
+    assert "2-man" in result.summary
+    assert validate_explanation(turn, result) == []
+
+
+def test_summary_word_limit_allows_longer_coaching():
+    turn = _turn(shape_goals=["tanyao"], dora_in_hand=["3s"])
+    words = ["word"] * 125
+    good = Explanation(
+        summary="Throw 3-pin. " + " ".join(words),
+        focus="efficiency",
+        pinned_action="dahai 3p",
+    )
+    assert validate_explanation(turn, good) == []
+    too_long = Explanation(
+        summary="Throw 3-pin. " + " ".join(["word"] * 130),
+        focus="efficiency",
+        pinned_action="dahai 3p",
+    )
+    assert "summary exceeds length budget" in validate_explanation(turn, too_long)

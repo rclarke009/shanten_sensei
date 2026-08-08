@@ -8,7 +8,11 @@ from shanten_sensei.explain import (
     template_explain,
     validate_explanation,
 )
-from shanten_sensei.features import build_call_tradeoff, simulate_shanten_after_call
+from shanten_sensei.features import (
+    build_call_tradeoff,
+    simulate_open_ukeire_after_call,
+    simulate_shanten_after_call,
+)
 from shanten_sensei.ingest import turn_from_path
 from shanten_sensei.live import (
     candidates_from_meta_options,
@@ -124,6 +128,17 @@ def test_pon_simulation_opens_hand():
     assert tradeoff is not None
     assert tradeoff.opens_hand is True
     assert tradeoff.open_shanten == open_sh
+    assert tradeoff.open_ukeire_count is not None
+    assert tradeoff.open_ukeire_count >= 0
+
+
+def test_open_ukeire_simulation_after_pon():
+    hand = ["1m", "3m", "5m", "6m", "6m", "8m", "4p", "8p", "9p", "W", "W", "N", "P"]
+    open_ukeire = simulate_open_ukeire_after_call(
+        hand, "pon W", consumed=["W", "W"], call_tile="W"
+    )
+    assert open_ukeire is not None
+    assert open_ukeire >= 0
 
 
 def test_diverge_004_call_voice():

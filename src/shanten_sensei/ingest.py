@@ -11,6 +11,7 @@ from typing import Any
 from shanten_sensei.features import (
     attach_score_situation,
     build_call_tradeoff,
+    collect_visible_tiles,
     extract_features,
 )
 from shanten_sensei.live import contrasted_dahai_tile
@@ -184,6 +185,12 @@ def turn_from_entry(
             call_action=call_action,
             consumed=call_consumed,
             call_tile=call_tile,
+            visible_tiles=collect_visible_tiles(
+                visible_discards=visible_discards,
+                discards=discards,
+                calls=calls,
+                dora_indicators=dora_indicators,
+            ),
         )
 
     game_state = GameState(

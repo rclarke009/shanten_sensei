@@ -6,6 +6,7 @@ from shanten_sensei.features import (
     classify_wait_shape,
     collect_visible_tiles,
     extract_features,
+    genbutsu_discarders,
     hand_without_discard,
     infer_hand_shape_notes,
     is_furiten,
@@ -141,6 +142,30 @@ def test_danger_genbutsu_beats_suji():
         visible_discards={"1": ["4m", "1m"]},
     )
     assert tags.get("1m") == "genbutsu"
+
+
+def test_genbutsu_discarders_excludes_own_seat():
+    seats = genbutsu_discarders(
+        "E",
+        {"0": ["E", "3m"], "1": ["2p"], "2": ["E"]},
+        exclude_seat=0,
+    )
+    assert seats == ["2"]
+
+
+def test_extract_features_danger_detail_seats():
+    feats = extract_features(
+        HAND,
+        visible_discards={"0": ["9p"], "2": ["9p", "1s"]},
+        ukeire_after_discard="9p",
+        candidate_tiles=["9p", "5s"],
+        context={"self_seat": 0},
+    )
+    assert feats.danger.get("9p") == "genbutsu"
+    detail = feats.danger_detail.get("9p")
+    assert detail is not None
+    assert detail["tag"] == "genbutsu"
+    assert detail["seats"] == ["2"]
 
 
 def test_build_score_situation_trailing_late():

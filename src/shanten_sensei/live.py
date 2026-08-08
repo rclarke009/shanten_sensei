@@ -7,6 +7,7 @@ from typing import Any
 from shanten_sensei.features import (
     attach_score_situation,
     build_call_tradeoff,
+    collect_visible_tiles,
     extract_features,
 )
 from shanten_sensei.schema import (
@@ -381,6 +382,12 @@ def turn_from_live(
             call_action=call_action,
             consumed=resolved_consumed,
             call_tile=resolved_tile or action_tile_arg(call_action),
+            visible_tiles=collect_visible_tiles(
+                visible_discards=visible_n,
+                discards=discards_n,
+                calls=calls_n,
+                dora_indicators=dora_n,
+            ),
         )
 
     game_state = GameState(
