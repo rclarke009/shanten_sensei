@@ -114,6 +114,7 @@ def test_api_explain_template_mode(session_and_server):
     assert data["source"] == "template"
     assert data["explanation"]["pinned_action"] == "dahai 9p"
     assert data["grounding_errors"] == []
+    assert data.get("score_tips") is False
     # detail is optional grounded expansion (second-click More in review UI)
     assert "detail" in data["explanation"]
     # template path does not use the LLM stub
@@ -122,6 +123,31 @@ def test_api_explain_template_mode(session_and_server):
 
     resp2 = httpx.post(f"{base}/api/explain/1?mode=template", timeout=5.0)
     assert resp2.json() == data
+
+
+def test_api_explain_score_tips_cache_key(session_and_server):
+    session, base, _calls = session_and_server
+    off = httpx.post(f"{base}/api/explain/1?mode=template", timeout=5.0)
+    assert off.status_code == 200
+    assert off.json()["score_tips"] is False
+
+    on = httpx.post(
+        f"{base}/api/explain/1?mode=template&score_tips=1", timeout=5.0
+    )
+    assert on.status_code == 200
+    assert on.json()["score_tips"] is True
+    # Separate cache entries — toggling must not reuse the off payload.
+    assert (1, "template", (), False) in session._cache
+    assert (1, "template", (), True) in session._cache
+
+    body = httpx.post(
+        f"{base}/api/explain/1?mode=template",
+        json={"score_tips": True},
+        timeout=5.0,
+    )
+    assert body.status_code == 200
+    assert body.json()["score_tips"] is True
+    assert body.json() == on.json()
 
 
 def test_api_explain_404(session_and_server):

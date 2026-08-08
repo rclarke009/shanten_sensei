@@ -380,7 +380,7 @@ def test_template_includes_fits_goals():
     result = template_explain(turn)
     assert "Throw" in result.summary
     assert "2-shanten (2 steps from ready)" in result.summary
-    assert "acceptances (tiles that improve the hand)" in result.summary
+    assert "ukeire (tiles that improve the hand)" in result.summary
     assert "fits tanyao (2–8 only; no 1/9, winds, or dragons)" in result.summary
     assert "dora (bonus tile)" in result.summary
     assert "3-sou" in result.summary.lower() or "3s" in result.summary

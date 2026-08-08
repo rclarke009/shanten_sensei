@@ -1,16 +1,25 @@
 from shanten_sensei.glosses import (
     DANGER_GLOSS,
+    GLOSS_CHECKLIST,
+    GLOSS_TERM_IDS,
     GOAL_GLOSS,
     NO_CLEAR_SHAPE,
     SHAPE_NOTE_GLOSS,
+    UKEIRE_GLOSS,
     WAIT_GLOSS,
     YAKU_REFERENCE_URL,
     format_aiming_for,
+    glossed_acceptances,
     glossed_danger,
     glossed_furiten,
     glossed_goal,
     glossed_shanten,
+    glossed_ukeire,
+    glossed_ukeire_count,
     glossed_wait,
+    normalize_known_terms,
+    term_is_known,
+    using_known_terms,
 )
 
 
@@ -90,3 +99,40 @@ def test_shape_note_gloss():
     assert "dead-end" in SHAPE_NOTE_GLOSS["dead_end"] or "connects" in SHAPE_NOTE_GLOSS[
         "dead_end"
     ]
+
+
+def test_ukeire_gloss():
+    assert UKEIRE_GLOSS == "tiles that improve the hand"
+    assert glossed_ukeire() == f"ukeire ({UKEIRE_GLOSS})"
+    assert glossed_ukeire(known_terms={"ukeire"}) == "ukeire"
+    assert glossed_ukeire_count(51) == f"ukeire ({UKEIRE_GLOSS}) 51"
+    assert glossed_ukeire_count(51, known_terms={"ukeire"}) == "ukeire 51"
+    assert glossed_acceptances(40) == f"about 40 ukeire ({UKEIRE_GLOSS})"
+    assert glossed_acceptances(40, known_terms={"ukeire"}) == "about 40 ukeire"
+    assert glossed_acceptances(40, known_terms={"acceptances"}) == "about 40 ukeire"
+
+
+def test_known_terms_strips_parentheticals():
+    assert glossed_goal("tanyao", known_terms={"tanyao"}) == "tanyao"
+    assert glossed_shanten(3, known_terms={"shanten"}) == "3-shanten"
+    assert glossed_shanten(0, known_terms={"tenpai"}) == "tenpai"
+    assert glossed_wait("ryanmen", known_terms={"ryanmen"}) == "ryanmen"
+    assert "2–8" in format_aiming_for(["tanyao"], known_terms=set())
+    assert format_aiming_for(["tanyao"], known_terms={"tanyao"}) == "tanyao"
+
+
+def test_using_known_terms_context():
+    with using_known_terms(["tanyao", "genbutsu"]):
+        assert term_is_known("tanyao")
+        assert glossed_goal("tanyao") == "tanyao"
+        assert glossed_danger("genbutsu") == "genbutsu"
+        assert "one suit" in glossed_goal("honitsu")
+    assert "2–8" in glossed_goal("tanyao")
+
+
+def test_normalize_known_terms_drops_unknown():
+    assert normalize_known_terms(["tanyao", "not-a-term", "ukeire"]) == frozenset(
+        {"tanyao", "ukeire"}
+    )
+    assert "ukeire" in GLOSS_TERM_IDS
+    assert any(i.id == "ukeire" for i in GLOSS_CHECKLIST)

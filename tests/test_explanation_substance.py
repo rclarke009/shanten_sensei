@@ -6,6 +6,7 @@ from shanten_sensei.explain import (
     _ensure_tile_emojis,
     _finalize_explanation,
     _glossed_acceptances_phrase,
+    _merge_detail_into_summary,
     build_detail_paragraph,
     build_user_payload,
     explain,
@@ -124,7 +125,7 @@ def test_template_not_thin():
     assert "shanten" in score.anchors or "ukeire" in score.anchors
     assert "Throw" in result.summary
     assert "3-shanten (3 steps from ready)" in result.summary
-    assert "acceptances (tiles that improve the hand)" in result.summary
+    assert "ukeire (tiles that improve the hand)" in result.summary
     assert "fits tanyao" in result.summary
     assert validate_explanation(turn, result) == []
 
@@ -133,7 +134,7 @@ def test_anchored_llm_style_passes():
     turn = _turn(shape_goals=["tanyao"], dora_in_hand=["3s"])
     summary = (
         "Throw 3-pin, not 5-man. You’re 3-shanten (3 steps from ready) "
-        "with about 51 acceptances (tiles that improve the hand). "
+        "with about 51 ukeire (tiles that improve the hand). "
         "That fits tanyao (2–8 only; no 1/9, winds, or dragons) with "
         "dora (bonus tile) 3-sou."
     )
@@ -159,7 +160,7 @@ def test_efficiency_with_anchor_not_thin():
     turn = _turn()
     summary = (
         "Discarding 3-pin is more efficient than 5-man; you're 3-shanten "
-        "(3 steps from ready) with about 51 acceptances "
+        "(3 steps from ready) with about 51 ukeire "
         "(tiles that improve the hand)."
     )
     score = score_explanation_substance(turn, summary)
@@ -173,7 +174,7 @@ def test_glossed_shanten_singular_step():
     assert _glossed_shanten_phrase(-1) == "complete (winning hand)"
     assert _glossed_shanten_phrase(0) == "tenpai (ready)"
     assert _glossed_acceptances_phrase(55) == (
-        "about 55 acceptances (tiles that improve the hand)"
+        "about 55 ukeire (tiles that improve the hand)"
     )
     assert _glossed_acceptances_phrase(0) == "no improving tiles"
     assert "about" not in _glossed_acceptances_phrase(0)
@@ -240,9 +241,40 @@ def test_payload_includes_hand_metric_glossary():
     turn = _turn()
     payload = build_user_payload(turn)
     assert payload["hand_metric_glossary"]["shanten"] == "3 steps from ready"
+    assert payload["hand_metric_glossary"]["ukeire"] == (
+        "tiles that improve the hand"
+    )
     assert payload["hand_metric_glossary"]["acceptances"] == (
         "tiles that improve the hand"
     )
+
+
+def test_known_terms_strips_glosses_from_template_and_payload():
+    turn = _turn(shape_goals=["tanyao"])
+    result = template_explain(turn, known_terms=["tanyao", "shanten", "ukeire"])
+    assert "tanyao (" not in result.summary
+    assert "fits tanyao" in result.summary or "tanyao" in result.summary
+    assert "3-shanten (" not in result.summary
+    assert "3-shanten" in result.summary
+    assert "ukeire (" not in result.summary
+    payload = build_user_payload(
+        turn.model_copy(
+            update={
+                "features": turn.features.model_copy(
+                    update={
+                        "context": {
+                            **turn.features.context,
+                            "known_terms": ["tanyao", "shanten", "ukeire"],
+                        }
+                    }
+                )
+            }
+        )
+    )
+    assert "tanyao" not in payload["shape_goal_glossary"]
+    assert "ukeire" not in payload["hand_metric_glossary"]
+    assert "acceptances" not in payload["hand_metric_glossary"]
+    assert "shanten" not in payload["hand_metric_glossary"]
 
 
 def test_wall_note_thin_remaining():
@@ -293,7 +325,7 @@ def test_template_tanyao_honor_ukeire_contrast():
     assert "fits tanyao" in result.summary
     assert "floating honor" in result.summary
     assert "outside tanyao" in result.summary
-    assert "acceptances (tiles that improve the hand)" not in result.summary
+    assert "ukeire (tiles that improve the hand)" not in result.summary
     assert "\n" in result.summary
     move_para, state_para = result.summary.split("\n", 1)
     assert "Throw" in move_para
@@ -757,13 +789,73 @@ def test_template_score_situation_opponent_riichi():
         score_diff="leading",
         late_game=False,
     )
-    result = template_explain(turn)
+    # Default: point tips off — tile/defense only.
+    off = template_explain(turn)
+    assert "ahead" not in off.summary.lower()
+    assert "prefer the safer cut" not in off.summary.lower()
+    assert "score_situation" not in score_explanation_substance(turn, off.summary).anchors
+
+    result = template_explain(turn, include_score_tips=True)
     assert "opponent" in result.summary.lower()
     assert "riichi" in result.summary.lower()
-    assert "safety" in result.summary.lower()
+    assert "safer cut" in result.summary.lower() or "ahead" in result.summary.lower()
     score = score_explanation_substance(turn, result.summary)
     assert "score_situation" in score.anchors
     assert validate_explanation(turn, result) == []
+
+
+def test_template_score_situation_opponent_riichi_fold():
+    turn = _turn(
+        diverge=True,
+        mortal_best="dahai 4m",
+        player_action="dahai 6m",
+        danger={"4m": "genbutsu"},
+    )
+    turn.features.score_situation = ScoreSituation(
+        riichi_opponents=1,
+        score_diff="even",
+        late_game=False,
+    )
+    result = template_explain(turn, include_score_tips=True)
+    assert "opponent is in riichi" in result.summary.lower()
+    assert "safer" in result.summary.lower()
+    assert "ukeire (tiles that improve the hand)" in result.summary
+    assert "score_situation" in score_explanation_substance(turn, result.summary).anchors
+
+
+def test_template_score_situation_trailing_late():
+    turn = _turn(
+        diverge=True,
+        mortal_best="dahai 4m",
+        player_action="dahai 6m",
+    )
+    turn.features.score_situation = ScoreSituation(
+        riichi_opponents=0,
+        score_diff="trailing",
+        late_game=True,
+    )
+    result = template_explain(turn, include_score_tips=True)
+    assert "behind late" in result.summary.lower()
+    assert "value" in result.summary.lower() or "speed" in result.summary.lower()
+    assert result.focus in ("value", "mixed")
+    assert "score_situation" in score_explanation_substance(turn, result.summary).anchors
+
+
+def test_template_score_situation_even_late_safe():
+    turn = _turn(
+        diverge=True,
+        mortal_best="dahai 4m",
+        player_action="dahai 6m",
+        danger={"4m": "genbutsu"},
+    )
+    turn.features.score_situation = ScoreSituation(
+        riichi_opponents=0,
+        score_diff="even",
+        late_game=True,
+    )
+    result = template_explain(turn, include_score_tips=True)
+    assert "scores are close" in result.summary.lower()
+    assert "score_situation" in score_explanation_substance(turn, result.summary).anchors
 
 
 def test_payload_includes_danger_glossary_and_score_situation():
@@ -773,9 +865,24 @@ def test_payload_includes_danger_glossary_and_score_situation():
         score_diff="trailing",
         late_game=True,
     )
-    payload = build_user_payload(turn)
-    assert "edge" in payload["danger_glossary"]["suji"]
-    assert "already discarded" in payload["danger_glossary"]["genbutsu"]
+    payload_off = build_user_payload(turn)
+    assert payload_off["score_situation"] is None
+    assert "edge" in payload_off["danger_glossary"]["suji"]
+    assert "already discarded" in payload_off["danger_glossary"]["genbutsu"]
+
+    turn_on = turn.model_copy(
+        update={
+            "features": turn.features.model_copy(
+                update={
+                    "context": {
+                        **turn.features.context,
+                        "include_score_tips": True,
+                    }
+                }
+            )
+        }
+    )
+    payload = build_user_payload(turn_on)
     assert "danger_detail" in payload
     assert payload["score_situation"]["score_diff"] == "trailing"
     assert payload["score_situation"]["late_game"] is True
@@ -798,7 +905,24 @@ def test_build_detail_paragraph_ukeire_danger_score():
         score_diff="trailing",
         late_game=True,
     )
-    detail = build_detail_paragraph(turn)
+    detail_off = build_detail_paragraph(turn)
+    assert detail_off is not None
+    assert "improving tiles" in detail_off
+    assert "trailing" not in detail_off
+
+    turn_on = turn.model_copy(
+        update={
+            "features": turn.features.model_copy(
+                update={
+                    "context": {
+                        **turn.features.context,
+                        "include_score_tips": True,
+                    }
+                }
+            )
+        }
+    )
+    detail = build_detail_paragraph(turn_on)
     assert detail is not None
     assert "improving tiles" in detail
     assert "vs about" in detail
@@ -828,6 +952,45 @@ def test_template_explain_merges_detail_into_summary():
     assert "mortal" not in result.summary.lower()
     assert "improving tiles" in result.detail
     assert validate_explanation(turn, result) == []
+
+
+def test_merge_skips_mortal_cut_ukeire_when_tiles_that_can_improve():
+    """Preferred LLM voice already cites ukeire; don't echo Mortal's-cut contrast."""
+    summary = (
+        "Throw 9-sou. That leaves about 60 tiles that can improve your hand, "
+        "vs about 57 if you throw 1-man. You're 3-shanten (3 steps from ready) "
+        "and aiming for pinfu (closed all-sequences; no value pair) — "
+        "9-sou is a floating terminal."
+    )
+    detail = (
+        "Mortal's cut leaves about 60 improving tiles vs about 57 on the "
+        "alternative. 9-sou — lone 1/9 with no connector. you're even on points."
+    )
+    merged = _merge_detail_into_summary(summary, detail)
+    merged_l = merged.lower()
+    assert "mortal" not in merged_l
+    assert "leaves about 60 improving tiles" not in merged_l
+    assert "tiles that can improve" in merged_l
+    # Non-ukeire detail may still append.
+    assert "even on points" in merged_l
+
+
+def test_merge_skips_mortal_cut_ukeire_when_glossed_ukeire_phrase():
+    """Glossed ukeire voice (tiles that improve the hand) also suppresses echo."""
+    summary = (
+        "Throw 1-pin, not 9-man. You're 4-shanten with about 58 ukeire "
+        "(tiles that improve the hand).\n"
+        "Keeping dora — 1-pin is a dead-end tile."
+    )
+    detail = (
+        "Mortal's cut leaves about 58 improving tiles vs about 56 on the "
+        "alternative. 1-pin — connects to nothing useful."
+    )
+    merged = _merge_detail_into_summary(summary, detail)
+    merged_l = merged.lower()
+    assert "mortal" not in merged_l
+    assert "leaves about 58 improving tiles" not in merged_l
+    assert "connects to nothing useful" in merged_l
 
 
 def test_template_defense_multi_danger_cut_only():
@@ -957,7 +1120,7 @@ def test_grounding_accepts_correct_genbutsu_on_best_cut():
     good = Explanation(
         summary=(
             "Throw 2-man, not 1-sou. You’re 2-shanten (2 steps from ready) with "
-            "about 12 acceptances (tiles that improve the hand).\n"
+            "about 12 ukeire (tiles that improve the hand).\n"
             "Improving tiles are thinning (only 1× 2-pin left). "
             "An opponent already discarded 2-man, so they can't ron it from you."
         ),

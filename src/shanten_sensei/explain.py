@@ -8,6 +8,7 @@ import os
 import re
 from collections import Counter
 from dataclasses import dataclass, field
+from collections.abc import Collection
 from typing import Any
 
 import httpx
@@ -15,14 +16,23 @@ import httpx
 logger = logging.getLogger(__name__)
 
 from shanten_sensei.features import danger_rank, genbutsu_discarders
+from shanten_sensei.glosses import ACCEPTANCES_GLOSS as _ACCEPTANCES_GLOSS
 from shanten_sensei.glosses import DANGER_GLOSS as _DANGER_GLOSS
+from shanten_sensei.glosses import DORA_GLOSS as _DORA_GLOSS
 from shanten_sensei.glosses import GOAL_GLOSS as _GOAL_GLOSS
 from shanten_sensei.glosses import SHAPE_NOTE_GLOSS as _SHAPE_NOTE_GLOSS
+from shanten_sensei.glosses import UKEIRE_GLOSS as _UKEIRE_GLOSS
 from shanten_sensei.glosses import WAIT_GLOSS as _WAIT_GLOSS
+from shanten_sensei.glosses import glossed_acceptances as _glossed_acceptances
 from shanten_sensei.glosses import glossed_danger as _glossed_danger
+from shanten_sensei.glosses import glossed_dora as _glossed_dora
 from shanten_sensei.glosses import glossed_goal as _glossed_goal
 from shanten_sensei.glosses import glossed_shanten as _glossed_shanten_phrase
+from shanten_sensei.glosses import glossed_ukeire as _glossed_ukeire
 from shanten_sensei.glosses import glossed_wait as _glossed_wait
+from shanten_sensei.glosses import normalize_known_terms
+from shanten_sensei.glosses import term_is_known
+from shanten_sensei.glosses import using_known_terms
 from shanten_sensei.live import (
     is_call_decision_turn,
     is_hora_decision_turn,
@@ -92,7 +102,9 @@ shape, furiten_blocking_tiles, dora_in_hand, or score_situation.
 For hora tips (hora_decision true — winning on tsumo/ron), lead with \
 \"Take the win\" — never bare \"hora\" or \"Declare hora\". When shanten is -1, \
 say the hand is complete / a winning hand, not tenpai (ready). Do not invent \
-yaku aims for a finished hand.
+yaku aims for a finished hand. Never say \"Waiting on\" at hora — name the \
+winning tile with \"Win on {tile}\" and wait_shape_glossary when known; omit \
+the tile line on tsumo (14-tile hand).
 
 When danger tags a safer cut (genbutsu / suji / one-chance with \
 danger_glossary parentheticals), prefer one defense sentence about \
@@ -143,15 +155,16 @@ those fields.
 
 If shape_goals is non-empty, you may name only those goals as likely hand shape \
 (not as Mortal’s internal plan). Prefer \"fits tanyao (…)\" over \"shape leans\". \
-When you name a goal or dora, include the short parenthetical from \
-shape_goal_glossary (e.g. \"tanyao (2–8 only; no 1/9, winds, or dragons)\", \
-\"yakuhai (triplet of dragon or your seat/round wind)\", \"dora (bonus tile)\"). \
-When you mention shanten or acceptances, include the short parenthetical from \
-hand_metric_glossary (e.g. \"3-shanten (3 steps from ready)\", \
-\"acceptances (tiles that improve the hand)\"). If wall_note already contrasts \
-improving-tile counts, do not also restate the absolute acceptance count. Never \
-invent other yaku. You may mention dora only when statuses.dora_in_hand is \
-non-empty.
+When you name a goal or dora, include the short parenthetical ONLY when that \
+term appears in shape_goal_glossary (e.g. \"tanyao (2–8 only; no 1/9, winds, or \
+dragons)\", \"dora (bonus tile)\"). If a term is missing from the glossary maps, \
+use the bare term with no parenthetical (the player already knows it). \
+When you mention shanten, ukeire, or acceptances, include the short parenthetical \
+from hand_metric_glossary when present (e.g. \"3-shanten (3 steps from ready)\", \
+\"ukeire (tiles that improve the hand)\"). Prefer saying \"ukeire\" over \
+\"acceptances\". If wall_note already contrasts improving-tile counts, do not \
+also restate the absolute ukeire count. Never invent other yaku. You may mention \
+dora only when statuses.dora_in_hand is non-empty.
 
 When shape_goals includes yakuhai, always explain with a short because clause \
 from yakuhai_pairs / yakuhai_singleton_value_tiles (e.g. you’re holding a pair \
@@ -170,7 +183,7 @@ improve your hand, vs about 41 if you throw 🀖7-sou.\\nYou’re 1-shanten \
 is a floating honor outside tanyao.\"
 
 Example mid-hand voice: \"Throw 🀡9-pin, not 🀔5-sou. You’re 2-shanten (2 steps \
-from ready) with about 40 acceptances (tiles that improve the hand).\\n🀡9-pin is \
+from ready) with about 40 ukeire (tiles that improve the hand).\\n🀡9-pin is \
 a floating terminal outside tanyao (2–8 only; no 1/9, winds, or dragons).\"
 
 Example dead-end voice: \"Throw 🀃North.\\n🀃North is a dead-end tile—it connects \
@@ -206,8 +219,8 @@ already.\\nAn opponent is in riichi—safety matters.\"
 Example riichi voice: \"Declare riichi, discard 🀡9-pin. You’re tenpai (ready) \
 with a ryanmen (two-sided open) wait.\\nYou have dora (bonus tile) in hand.\"
 
-Example hora voice: \"Take the win. You’re complete (winning hand).\\nYou have \
-dora (bonus tile) in hand.\"
+Example hora voice: \"Take the win. You’re complete (winning hand).\\nWin on \
+🀛2-sou (tanki (pair)).\\nYou have dora (bonus tile) in hand.\"
 
 Return JSON with exactly these keys:
 - summary: string (two or three short sentences; use \\n between move and state when both appear)
@@ -270,9 +283,6 @@ _YAKU_MENTION_PATTERNS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("dora", (r"\bdora\b",)),
 )
 
-_DORA_GLOSS = "bonus tile"
-_ACCEPTANCES_GLOSS = "tiles that improve the hand"
-
 # Closed-hand-only yaku: drop from coaching when Mortal recommends an open call.
 CLOSED_ONLY_GOALS = frozenset({"pinfu", "chiitoi"})
 
@@ -299,13 +309,18 @@ def coaching_shape_goals(turn: TurnExplainInput) -> list[str]:
 
 
 def _glossed_dora_phrase(tile_label: str) -> str:
-    return f"dora ({_DORA_GLOSS}) {tile_label}"
+    return _glossed_dora(tile_label)
 
 
 def _glossed_acceptances_phrase(count: int) -> str:
-    if count == 0:
-        return "no improving tiles"
-    return f"about {count} acceptances ({_ACCEPTANCES_GLOSS})"
+    """Improving-tile count; teaches ukeire for beginners."""
+    return _glossed_acceptances(count)
+
+
+def _dora_in_hand_sentence() -> str:
+    if term_is_known("dora"):
+        return "You have dora in hand"
+    return "You have dora (bonus tile) in hand"
 
 
 @dataclass(frozen=True)
@@ -423,6 +438,9 @@ def _feature_anchors_in_summary(turn: TurnExplainInput, summary_l: str) -> list[
         re.search(r"\briichi\b", summary_l)
         or re.search(r"\bleading\b", summary_l)
         or re.search(r"\btrailing\b", summary_l)
+        or re.search(r"\bahead\b", summary_l)
+        or re.search(r"\bbehind\b", summary_l)
+        or re.search(r"\bscores are close\b", summary_l)
         or re.search(r"\bsafety\b", summary_l)
         or re.search(r"\blate\b", summary_l)
         or re.search(r"\bwall\b", summary_l)
@@ -495,6 +513,49 @@ def wall_note(turn: TurnExplainInput) -> str | None:
     return text
 
 
+def _score_tips_enabled(turn: TurnExplainInput) -> bool:
+    """Opt-in point-situation tips (default off for beginners)."""
+    return bool(turn.features.context.get("include_score_tips"))
+
+
+def _known_terms_from_turn(turn: TurnExplainInput) -> frozenset[str]:
+    raw = turn.features.context.get("known_terms")
+    if isinstance(raw, (list, tuple, set, frozenset)):
+        return normalize_known_terms(raw)
+    return frozenset()
+
+
+def _turn_with_coach_prefs(
+    turn: TurnExplainInput,
+    *,
+    include_score_tips: bool,
+    known_terms: Collection[str] | None,
+) -> TurnExplainInput:
+    """Stamp include_score_tips + known_terms onto features.context."""
+    known = normalize_known_terms(known_terms)
+    want_score = bool(include_score_tips)
+    cur_score = bool(turn.features.context.get("include_score_tips"))
+    cur_known = _known_terms_from_turn(turn)
+    if cur_score is want_score and cur_known == known:
+        return turn
+    ctx = dict(turn.features.context)
+    ctx["include_score_tips"] = want_score
+    ctx["known_terms"] = sorted(known)
+    return turn.model_copy(
+        update={"features": turn.features.model_copy(update={"context": ctx})}
+    )
+
+
+def _filter_glossary(mapping: dict[str, str], known: frozenset[str]) -> dict[str, str]:
+    """Drop glossary entries the player marked known (and ukeire/acceptances aliases)."""
+    out: dict[str, str] = {}
+    for key, gloss in mapping.items():
+        if term_is_known(key, known):
+            continue
+        out[key] = gloss
+    return out
+
+
 def build_user_payload(turn: TurnExplainInput) -> dict[str, Any]:
     scores = {
         c.action: {"q_value": c.q_value, "prob": c.prob}
@@ -506,6 +567,7 @@ def build_user_payload(turn: TurnExplainInput) -> dict[str, Any]:
     riichi_decision = is_riichi_decision_turn(turn)
     hora_decision = is_hora_decision_turn(turn)
     coach_labels = call_decision or riichi_decision or hora_decision
+    known = _known_terms_from_turn(turn)
 
     def _display(action: str) -> str:
         if riichi_decision and action.strip() == "none":
@@ -526,6 +588,42 @@ def build_user_payload(turn: TurnExplainInput) -> dict[str, Any]:
     reach_discard = turn.features.context.get("reach_discard")
     if reach_discard:
         reach_discard = normalize_tile(str(reach_discard))
+
+    score_situation = None
+    if _score_tips_enabled(turn) and turn.features.score_situation is not None:
+        score_situation = turn.features.score_situation.model_dump()
+
+    shape_goal_glossary = _filter_glossary(
+        {
+            **{
+                g: _GOAL_GLOSS[g]
+                for g in coaching_shape_goals(turn)
+                if g in _GOAL_GLOSS
+            },
+            "dora": _DORA_GLOSS,
+        },
+        known,
+    )
+    wait_raw = (
+        {turn.features.statuses.wait_shape: _WAIT_GLOSS[turn.features.statuses.wait_shape]}
+        if turn.features.statuses.wait_shape in _WAIT_GLOSS
+        else {}
+    )
+    hand_metric_glossary = _filter_glossary(
+        {
+            "shanten": _shanten_glossary(),
+            "ukeire": _UKEIRE_GLOSS,
+            "acceptances": _ACCEPTANCES_GLOSS,
+        },
+        known,
+    )
+    # Shanten / tenpai keys: drop shanten gloss text when shanten known; drop when tenpai known and ready.
+    if term_is_known("shanten", known) and turn.features.shanten not in (-1, 0, None):
+        hand_metric_glossary.pop("shanten", None)
+    if term_is_known("tenpai", known) and (
+        turn.features.shanten is not None and turn.features.shanten <= 0
+    ):
+        hand_metric_glossary.pop("shanten", None)
 
     return {
         "player_action": turn.player_action,
@@ -558,45 +656,33 @@ def build_user_payload(turn: TurnExplainInput) -> dict[str, Any]:
         "hand_shape_notes": [
             n.model_dump() for n in turn.features.hand_shape_notes
         ],
-        "hand_shape_note_glossary": {
-            n.kind: _SHAPE_NOTE_GLOSS[n.kind]
-            for n in turn.features.hand_shape_notes
-            if n.kind in _SHAPE_NOTE_GLOSS
-        },
-        "shape_goal_glossary": {
-            **{
-                g: _GOAL_GLOSS[g]
-                for g in coaching_shape_goals(turn)
-                if g in _GOAL_GLOSS
+        "hand_shape_note_glossary": _filter_glossary(
+            {
+                n.kind: _SHAPE_NOTE_GLOSS[n.kind]
+                for n in turn.features.hand_shape_notes
+                if n.kind in _SHAPE_NOTE_GLOSS
             },
-            "dora": _DORA_GLOSS,
-        },
-        "wait_shape_glossary": (
-            {turn.features.statuses.wait_shape: _WAIT_GLOSS[turn.features.statuses.wait_shape]}
-            if turn.features.statuses.wait_shape in _WAIT_GLOSS
-            else {}
+            known,
         ),
-        "hand_metric_glossary": {
-            "shanten": _shanten_glossary(),
-            "acceptances": _ACCEPTANCES_GLOSS,
-        },
+        "shape_goal_glossary": shape_goal_glossary,
+        "wait_shape_glossary": _filter_glossary(wait_raw, known),
+        "hand_metric_glossary": hand_metric_glossary,
         "call_tradeoff": (
             turn.features.call_tradeoff.model_dump()
             if turn.features.call_tradeoff is not None
             else None
         ),
-        "score_situation": (
-            turn.features.score_situation.model_dump()
-            if turn.features.score_situation is not None
-            else None
-        ),
+        "score_situation": score_situation,
         "danger": turn.features.danger,
         "danger_detail": turn.features.danger_detail,
-        "danger_glossary": {
-            tag: _DANGER_GLOSS[tag]
-            for tag in sorted(set(turn.features.danger.values()))
-            if tag in _DANGER_GLOSS
-        },
+        "danger_glossary": _filter_glossary(
+            {
+                tag: _DANGER_GLOSS[tag]
+                for tag in sorted(set(turn.features.danger.values()))
+                if tag in _DANGER_GLOSS
+            },
+            known,
+        ),
         "context": turn.features.context,
         "yakuhai_pairs": _yakuhai_pair_labels(
             turn.game_state.hand, turn.features.context
@@ -731,6 +817,14 @@ def _thin_wall_sentence(turn: TurnExplainInput) -> str | None:
     return f"Improving tiles are thinning ({detail})"
 
 
+_UKEIRE_CITED_IN_SUMMARY_RE = re.compile(
+    r"\b(?:improving tiles?|acceptances?|ukeire|"
+    r"tiles that can improve(?:\s+(?:your\s+)?hand)?|"
+    r"tiles that improve(?:\s+(?:the|your)\s+hand)?)\b",
+    re.IGNORECASE,
+)
+
+
 def _merge_detail_into_summary(summary: str, detail: str | None) -> str:
     """Append grounded detail sentences not already covered in summary."""
     if not detail:
@@ -742,9 +836,7 @@ def _merge_detail_into_summary(summary: str, detail: str | None) -> str:
             summary_l,
         )
     )
-    has_ukeire = bool(
-        re.search(r"\b(?:improving tiles?|acceptances?)\b", summary_l)
-    )
+    has_ukeire = bool(_UKEIRE_CITED_IN_SUMMARY_RE.search(summary_l))
     extras: list[str] = []
     for chunk in detail.rstrip(".").split(". "):
         chunk = chunk.strip()
@@ -785,6 +877,28 @@ def _merge_detail_into_summary(summary: str, detail: str | None) -> str:
     return f"{summary}\n{merged}"
 
 
+def _hora_winning_tile(turn: TurnExplainInput) -> str | None:
+    """Tile to win on at a hora prompt (ron discard or sole wait)."""
+    raw = turn.mortal_output.raw_expected
+    if isinstance(raw, dict):
+        pai = raw.get("pai")
+        if pai:
+            return normalize_tile(str(pai))
+
+    waits = turn.features.ukeire.tiles
+    if len(waits) == 1:
+        return normalize_tile(waits[0])
+
+    wait_set = {deaka(normalize_tile(w)) for w in waits}
+    for river in turn.game_state.visible_discards.values():
+        if not river:
+            continue
+        last = deaka(normalize_tile(river[-1]))
+        if last in wait_set:
+            return normalize_tile(river[-1])
+    return None
+
+
 def build_detail_paragraph(turn: TurnExplainInput) -> str | None:
     """One extra grounded paragraph for the second-click deeper Why? path."""
     bits: list[str] = []
@@ -798,7 +912,24 @@ def build_detail_paragraph(turn: TurnExplainInput) -> str | None:
         )
 
     statuses = turn.features.statuses
-    if statuses.tenpai and ukeire.tiles:
+    if is_hora_decision_turn(turn):
+        if len(turn.game_state.hand) < 14:
+            tile = _hora_winning_tile(turn)
+            if tile:
+                labels = human_tile_label(tile)
+            elif ukeire.tiles:
+                labels = ", ".join(
+                    human_tile_label(t) for t in ukeire.tiles[:6]
+                )
+            else:
+                labels = None
+            if labels:
+                wait_label = _glossed_wait(statuses.wait_shape)
+                if wait_label:
+                    bits.append(f"Win on {labels} ({wait_label})")
+                else:
+                    bits.append(f"Win on {labels}")
+    elif statuses.tenpai and ukeire.tiles:
         labels = ", ".join(human_tile_label(t) for t in ukeire.tiles[:6])
         wait_label = _glossed_wait(statuses.wait_shape)
         if wait_label:
@@ -818,22 +949,26 @@ def build_detail_paragraph(turn: TurnExplainInput) -> str | None:
         gloss = _SHAPE_NOTE_GLOSS.get(note.kind)
         if not gloss:
             continue
-        bits.append(f"{human_tile_label(note.tile)} — {gloss}")
+        if term_is_known(note.kind):
+            bits.append(f"{human_tile_label(note.tile)} — {note.kind}")
+        else:
+            bits.append(f"{human_tile_label(note.tile)} — {gloss}")
 
-    ss = turn.features.score_situation
-    if ss is not None:
-        score_bits: list[str] = []
-        if ss.riichi_opponents:
-            n = ss.riichi_opponents
-            score_bits.append(
-                f"{n} opponent{'s' if n != 1 else ''} in riichi"
-            )
-        if ss.score_diff:
-            score_bits.append(f"you’re {ss.score_diff} on points")
-        if ss.late_game:
-            score_bits.append("late game / thin wall")
-        if score_bits:
-            bits.append("; ".join(score_bits))
+    if _score_tips_enabled(turn):
+        ss = turn.features.score_situation
+        if ss is not None:
+            score_bits: list[str] = []
+            if ss.riichi_opponents:
+                n = ss.riichi_opponents
+                score_bits.append(
+                    f"{n} opponent{'s' if n != 1 else ''} in riichi"
+                )
+            if ss.score_diff:
+                score_bits.append(f"you’re {ss.score_diff} on points")
+            if ss.late_game:
+                score_bits.append("late game / thin wall")
+            if score_bits:
+                bits.append("; ".join(score_bits))
 
     if not bits:
         return None
@@ -1160,6 +1295,8 @@ def _hand_has_terminals_or_honors(hand: list[str]) -> bool:
 
 def _score_situation_sentence(turn: TurnExplainInput) -> tuple[str | None, Focus | None]:
     """At most one point-situation sentence; optional focus nudge."""
+    if not _score_tips_enabled(turn):
+        return None, None
     sit = turn.features.score_situation
     if sit is None:
         return None, None
@@ -1170,16 +1307,43 @@ def _score_situation_sentence(turn: TurnExplainInput) -> tuple[str | None, Focus
 
     if sit.riichi_opponents > 0:
         if sit.score_diff == "leading" and best_safe:
-            return "You’re ahead and an opponent is in riichi—safety matters", "defense"
-        return "An opponent is in riichi—safety matters", "defense"
+            return (
+                "You’re ahead and an opponent is in riichi—"
+                "prefer the safer cut over chasing efficiency",
+                "defense",
+            )
+        return (
+            "An opponent is in riichi—"
+            f"fold toward safer tiles even if {_glossed_ukeire()} drops",
+            "defense",
+        )
 
     if sit.late_game and sit.score_diff == "trailing":
         if is_riichi_decision_action(turn.mortal_best):
-            return "You’re trailing late—this riichi fights for points", "value"
-        return "You’re trailing late—value matters more than slow builds", "value"
+            return (
+                "You’re behind late—"
+                "this riichi fights for points instead of playing safe",
+                "value",
+            )
+        return (
+            "You’re behind late—"
+            "aim for value and speed over slow safe builds",
+            "value",
+        )
 
     if sit.late_game and sit.score_diff == "leading" and best_safe:
-        return "You’re leading late—safer cuts protect the lead", "defense"
+        return (
+            "You’re ahead late—"
+            "safer cuts protect the lead even if they leave fewer improving tiles",
+            "defense",
+        )
+
+    if sit.late_game and sit.score_diff == "even" and best_safe:
+        return (
+            "Scores are close late—"
+            "avoid needless deal-in risk when a safer cut exists",
+            "defense",
+        )
 
     return None, None
 
@@ -1515,14 +1679,16 @@ def _template_explain_riichi(turn: TurnExplainInput) -> Explanation:
     if statuses.tenpai or turn.features.shanten == 0:
         wait = _glossed_wait(statuses.wait_shape)
         if wait:
-            move_sents.append(f"You’re tenpai (ready) with a {wait} wait")
+            move_sents.append(
+                f"You’re {_glossed_shanten_phrase(0)} with a {wait} wait"
+            )
         else:
-            move_sents.append("You’re tenpai (ready)")
+            move_sents.append(f"You’re {_glossed_shanten_phrase(0)}")
     elif turn.features.shanten is not None:
         state_sents.append(f"You’re {_glossed_shanten_phrase(turn.features.shanten)}")
 
     if statuses.dora_in_hand and best_kind == "reach":
-        state_sents.append("You have dora (bonus tile) in hand")
+        state_sents.append(_dora_in_hand_sentence())
         focus = "value"
 
     furiten_bit = _furiten_because_sentence(turn)
@@ -1580,12 +1746,14 @@ def _template_explain_hora(turn: TurnExplainInput) -> Explanation:
     if shanten == -1:
         move_sents.append(f"You’re {_glossed_shanten_phrase(-1)}")
     elif statuses.tenpai or shanten == 0:
-        move_sents.append("You’re tenpai (ready) with a winning hand")
+        move_sents.append(
+            f"You’re {_glossed_shanten_phrase(0)} with a winning hand"
+        )
     elif shanten is not None:
         state_sents.append(f"You’re {_glossed_shanten_phrase(shanten)}")
 
     if statuses.dora_in_hand:
-        state_sents.append("You have dora (bonus tile) in hand")
+        state_sents.append(_dora_in_hand_sentence())
         focus = "value"
 
     focus = _append_score_situation(state_sents, focus, turn)
@@ -1602,8 +1770,23 @@ def _template_explain_hora(turn: TurnExplainInput) -> Explanation:
     )
 
 
-def template_explain(turn: TurnExplainInput) -> Explanation:
+def template_explain(
+    turn: TurnExplainInput,
+    *,
+    include_score_tips: bool = False,
+    known_terms: Collection[str] | None = None,
+) -> Explanation:
     """Deterministic offline explainer for tests / no API key."""
+    turn = _turn_with_coach_prefs(
+        turn,
+        include_score_tips=include_score_tips,
+        known_terms=known_terms,
+    )
+    with using_known_terms(_known_terms_from_turn(turn)):
+        return _template_explain_body(turn)
+
+
+def _template_explain_body(turn: TurnExplainInput) -> Explanation:
     if is_call_decision_turn(turn):
         return _template_explain_call(turn)
     if is_hora_decision_turn(turn):
@@ -2390,35 +2573,66 @@ def explain(
     *,
     use_llm: bool | None = None,
     model: str | None = None,
+    include_score_tips: bool = False,
+    known_terms: Collection[str] | None = None,
 ) -> Explanation:
     """Produce a grounded Explanation. Falls back to template without an API key."""
-    if use_llm is None:
-        use_llm = bool(os.environ.get("OPENAI_API_KEY") or os.environ.get("SENSEI_API_KEY"))
+    turn = _turn_with_coach_prefs(
+        turn,
+        include_score_tips=include_score_tips,
+        known_terms=known_terms,
+    )
+    known = _known_terms_from_turn(turn)
+    with using_known_terms(known):
+        if use_llm is None:
+            use_llm = bool(
+                os.environ.get("OPENAI_API_KEY") or os.environ.get("SENSEI_API_KEY")
+            )
 
-    if use_llm:
-        try:
-            explanation = _llm_explain(turn, model=model)
-        except Exception:
-            # Network / parse / schema failures → grounded template
-            explanation = template_explain(turn)
-    else:
-        explanation = template_explain(turn)
+        if use_llm:
+            try:
+                explanation = _llm_explain(turn, model=model)
+            except Exception:
+                # Network / parse / schema failures → grounded template
+                explanation = template_explain(
+                    turn,
+                    include_score_tips=include_score_tips,
+                    known_terms=known,
+                )
+        else:
+            explanation = template_explain(
+                turn,
+                include_score_tips=include_score_tips,
+                known_terms=known,
+            )
 
-    errors = validate_explanation(turn, explanation)
-    if errors:
-        # One repair pass: force template (always grounded); keep summary clean for players.
-        logger.info("grounding repair: %s", "; ".join(errors))
-        return template_explain(turn)
-    return _finalize_explanation(turn, explanation)
+        errors = validate_explanation(turn, explanation)
+        if errors:
+            # One repair pass: force template (always grounded); keep summary clean for players.
+            logger.info("grounding repair: %s", "; ".join(errors))
+            return template_explain(
+                turn,
+                include_score_tips=include_score_tips,
+                known_terms=known,
+            )
+        return _finalize_explanation(turn, explanation)
 
 
 def explain_llm(
     turn: TurnExplainInput,
     *,
     model: str | None = None,
+    include_score_tips: bool = False,
+    known_terms: Collection[str] | None = None,
 ) -> Explanation:
     """LLM-only explain. Raises if no API key or the call fails — no template fallback."""
-    return _finalize_explanation(turn, _llm_explain(turn, model=model))
+    turn = _turn_with_coach_prefs(
+        turn,
+        include_score_tips=include_score_tips,
+        known_terms=known_terms,
+    )
+    with using_known_terms(_known_terms_from_turn(turn)):
+        return _finalize_explanation(turn, _llm_explain(turn, model=model))
 
 
 def _llm_explain(turn: TurnExplainInput, *, model: str | None) -> Explanation:

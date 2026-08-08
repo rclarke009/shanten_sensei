@@ -291,11 +291,72 @@
       border-bottom: 1px solid var(--line);
     }
     .board-details .inner { padding-bottom: 0.5rem; }
+    .terms-panel {
+      margin-top: 0.75rem;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0.55rem 0.75rem;
+      background: rgba(0, 0, 0, 0.15);
+      max-width: 52rem;
+    }
+    .terms-panel > summary {
+      cursor: pointer;
+      font-weight: 600;
+      color: var(--text);
+      list-style: none;
+    }
+    .terms-panel > summary::-webkit-details-marker { display: none; }
+    .terms-panel > summary::before {
+      content: "▸ ";
+      color: var(--accent);
+      font-family: var(--mono);
+    }
+    .terms-panel[open] > summary::before { content: "▾ "; }
+    .terms-hint {
+      margin: 0.4rem 0 0.65rem;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+    .terms-groups {
+      display: grid;
+      gap: 0.75rem;
+    }
+    .terms-group h3 {
+      margin: 0 0 0.35rem;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+    }
+    .terms-group label {
+      display: flex;
+      gap: 0.45rem;
+      align-items: flex-start;
+      margin: 0.2rem 0;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+    .terms-group .gloss {
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
     .why-actions {
       display: flex;
       flex-wrap: wrap;
       gap: 0.6rem;
       align-items: center;
+    }
+    .score-tips-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+      cursor: pointer;
+      user-select: none;
+    }
+    .score-tips-toggle input {
+      accent-color: var(--accent);
     }
     button.why {
       appearance: none;
@@ -404,6 +465,13 @@
     <h1>Shanten Sensei</h1>
     <div class="meta" id="meta">Loading review…</div>
     <div class="notice">Practice / review only — not for ranked assistance.</div>
+    <details class="terms-panel" id="terms-panel">
+      <summary>Terms I know</summary>
+      <p class="terms-hint">
+        Checked terms keep their names in tips but hide the definitions.
+      </p>
+      <div class="terms-groups" id="terms-checklist"></div>
+    </details>
   </header>
   <div class="layout">
     <nav class="list" id="list" aria-label="Diverge turns"></nav>
@@ -417,12 +485,42 @@
       "I'm here to help you learn Riichi Mahjong. " +
       "We'll have you winning in no time!";
 
+    const KNOWN_TERMS_KEY = "shanten_sensei_known_terms";
+
+    function loadKnownTerms() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(KNOWN_TERMS_KEY) || "[]");
+        return Array.isArray(raw)
+          ? raw.filter((x) => typeof x === "string")
+          : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function saveKnownTerms(terms) {
+      localStorage.setItem(KNOWN_TERMS_KEY, JSON.stringify(terms));
+    }
+
     const state = {
       diverges: [],
       selected: null,
       explanations: {},
       loadingOffline: {},
+      glossChecklist: [],
+      knownTerms: loadKnownTerms(),
+      scoreTips: false,
     };
+
+    function knownTermsQs(prefix) {
+      const t = (state.knownTerms || []).slice().sort();
+      if (!t.length) return "";
+      return `${prefix}known_terms=${encodeURIComponent(t.join(","))}`;
+    }
+
+    function knownTermsFingerprint() {
+      return (state.knownTerms || []).slice().sort().join(",");
+    }
 
     const MAN = ["🀇","🀈","🀉","🀊","🀋","🀌","🀍","🀎","🀏"];
     const PIN = ["🀙","🀚","🀛","🀜","🀝","🀞","🀟","🀠","🀡"];
@@ -555,7 +653,7 @@
         });
       }
       chips.push({
-        text: `ukeire ${d.ukeire ?? "–"} (improving tiles)`,
+        text: d.ukeire_label || `ukeire ${d.ukeire ?? "–"}`,
         on: true,
       });
       const waitLabel = d.wait_shape_label || d.wait_shape || s.wait_shape;
@@ -576,7 +674,11 @@
       if (s.riichi) chips.push({ text: "riichi", on: true });
       if (s.ippatsu) chips.push({ text: "ippatsu", on: true });
       if (s.dora_in_hand && s.dora_in_hand.length) {
-        chips.push({ text: `dora (bonus tile) ${s.dora_in_hand.join(" ")}`, on: true });
+        const doraKnown = (state.knownTerms || []).includes("dora");
+        const doraText = doraKnown
+          ? `dora ${s.dora_in_hand.join(" ")}`
+          : `dora (bonus tile) ${s.dora_in_hand.join(" ")}`;
+        chips.push({ text: doraText, on: true });
       }
       if (s.visible_dora && s.visible_dora.length) {
         chips.push({ text: `indicators ${s.visible_dora.join(" ")}`, on: true });
@@ -698,8 +800,8 @@
 
       const whyBox = el("div", { id: "why-box" });
       const preferred =
-        state.explanations[d.index + ":llm"] ||
-        state.explanations[d.index + ":template"];
+        state.explanations[cacheKey(d.index, "llm")] ||
+        state.explanations[cacheKey(d.index, "template")];
       if (preferred) {
         whyBox.append(renderWhy(preferred));
       } else if (state.loadingOffline[d.index]) {
@@ -711,7 +813,7 @@
       const err = el("div", { className: "err", id: "why-err" });
       const offlineWrap = el("div", { id: "offline-wrap" });
 
-      const llmCached = state.explanations[d.index + ":llm"];
+      const llmCached = state.explanations[cacheKey(d.index, "llm")];
       const whyBtn = el(
         "button",
         {
@@ -721,6 +823,35 @@
           onClick: () => askWhy(d.index, "llm"),
         },
         llmCached ? "Why? (cached)" : "Why?"
+      );
+
+      const scoreTipsLabel = el(
+        "label",
+        { className: "score-tips-toggle" },
+        (() => {
+          const cb = el("input", {
+            type: "checkbox",
+            id: "score-tips-cb",
+          });
+          cb.checked = !!state.scoreTips;
+          cb.addEventListener("change", () => {
+            state.scoreTips = !!cb.checked;
+            const hadLlm = Object.keys(state.explanations).some((k) =>
+              k.startsWith(`${d.index}:llm:`)
+            );
+            const hadTemplate = Object.keys(state.explanations).some((k) =>
+              k.startsWith(`${d.index}:template:`)
+            );
+            renderDetail();
+            if (hadLlm) {
+              askWhy(d.index, "llm").catch(() => {});
+            } else if (hadTemplate) {
+              askWhy(d.index, "template", { silent: true }).catch(() => {});
+            }
+          });
+          return cb;
+        })(),
+        " Point tips"
       );
 
       const boardInner = el("div", { className: "inner" });
@@ -780,7 +911,7 @@
         aiming,
         moves,
         el("div", { className: "section-label" }, "Yakuman says"),
-        el("div", { className: "why-actions" }, whyBtn, offlineWrap),
+        el("div", { className: "why-actions" }, whyBtn, scoreTipsLabel, offlineWrap),
         err,
         whyBox,
         boardDetails
@@ -875,7 +1006,82 @@
     }
 
     function cacheKey(index, mode) {
-      return `${index}:${mode}`;
+      return `${index}:${mode}:${knownTermsFingerprint()}:score${state.scoreTips ? 1 : 0}`;
+    }
+
+    function renderTermsChecklist() {
+      const root = document.getElementById("terms-checklist");
+      if (!root) return;
+      root.replaceChildren();
+      const known = new Set(state.knownTerms || []);
+      const byGroup = new Map();
+      for (const item of state.glossChecklist || []) {
+        if (!byGroup.has(item.group)) byGroup.set(item.group, []);
+        byGroup.get(item.group).push(item);
+      }
+      for (const [group, items] of byGroup) {
+        const box = el("div", { className: "terms-group" }, el("h3", {}, group));
+        for (const item of items) {
+          const input = document.createElement("input");
+          input.type = "checkbox";
+          input.checked = known.has(item.id);
+          input.addEventListener("change", (ev) =>
+            onKnownTermToggle(item.id, ev.target.checked)
+          );
+          box.append(
+            el(
+              "label",
+              {},
+              input,
+              el(
+                "span",
+                {},
+                item.id,
+                " ",
+                el("span", { className: "gloss" }, `(${item.gloss})`)
+              )
+            )
+          );
+        }
+        root.append(box);
+      }
+    }
+
+    async function onKnownTermToggle(termId, checked) {
+      const next = new Set(state.knownTerms || []);
+      if (checked) next.add(termId);
+      else next.delete(termId);
+      state.knownTerms = Array.from(next).sort();
+      saveKnownTerms(state.knownTerms);
+      state.explanations = {};
+      await reloadReview({ keepSelection: true });
+    }
+
+    async function reloadReview(opts = {}) {
+      const meta = document.getElementById("meta");
+      const prev = state.selected;
+      const resp = await fetch(`/api/review${knownTermsQs("?")}`);
+      if (!resp.ok) throw new Error(`Failed to load review (${resp.status})`);
+      const data = await resp.json();
+      state.diverges = data.diverges || [];
+      state.glossChecklist = data.gloss_checklist || [];
+      if (Array.isArray(data.known_terms)) {
+        // Server may drop unknown ids
+        state.knownTerms = data.known_terms;
+        saveKnownTerms(state.knownTerms);
+      }
+      if (meta) {
+        meta.textContent = `${data.log_id || "report"} · ${data.diverge_count} diverges`;
+      }
+      renderTermsChecklist();
+      renderList();
+      if (opts.keepSelection && prev != null && state.diverges.some((d) => d.index === prev)) {
+        selectDiverge(prev);
+      } else if (state.diverges.length) {
+        selectDiverge(state.diverges[0].index);
+      } else {
+        renderDetail();
+      }
     }
 
     async function ensureOfflineExplanation(index) {
@@ -914,8 +1120,20 @@
       if (!opts.silent && btn) btn.disabled = true;
       if (!opts.silent && offlineBtn) offlineBtn.disabled = true;
       try {
-        const qs = mode === "template" ? "?mode=template" : "";
-        const resp = await fetch(`/api/explain/${index}${qs}`, { method: "POST" });
+        const params = new URLSearchParams();
+        if (mode === "template") params.set("mode", "template");
+        if (state.scoreTips) params.set("score_tips", "1");
+        const known = (state.knownTerms || []).slice().sort();
+        if (known.length) params.set("known_terms", known.join(","));
+        const qs = params.toString() ? `?${params.toString()}` : "";
+        const resp = await fetch(`/api/explain/${index}${qs}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            known_terms: state.knownTerms || [],
+            score_tips: !!state.scoreTips,
+          }),
+        });
         const data = await resp.json();
         if (!resp.ok) {
           throw new Error(data.error || `HTTP ${resp.status}`);
@@ -947,16 +1165,10 @@
     async function boot() {
       const meta = document.getElementById("meta");
       try {
-        const resp = await fetch("/api/review");
-        if (!resp.ok) throw new Error(`Failed to load review (${resp.status})`);
-        const data = await resp.json();
-        state.diverges = data.diverges || [];
-        meta.textContent = `${data.log_id || "report"} · ${data.diverge_count} diverges`;
-        renderList();
-        if (state.diverges.length) selectDiverge(state.diverges[0].index);
-        else renderDetail();
+        await reloadReview();
       } catch (e) {
         meta.textContent = e.message || String(e);
+        renderTermsChecklist();
         renderDetail();
       }
     }
