@@ -16,7 +16,7 @@ Practice / friend / vs-AI only — **not for ranked**.
 
 1. Get **ShantenSensei-macOS.dmg** from [overlay Releases](https://github.com/rclarke009/shanten-sensei-overlay/releases).
 2. Drag **Shanten Sensei** to Applications and open it (right-click → **Open** if macOS warns about an unsigned build).
-3. Complete the **first-run wizard**: practice acknowledgment, Mortal model file, Safari companion, optional API key.
+3. Complete the **first-run wizard**: practice acknowledgment, bundled Mortal model (AGPL), Safari companion, optional API key.
 4. Play Majsoul in **Safari**, join friend / practice / vs-AI, press **Why?** in the coach window.
 
 Full troubleshooting and proxy/cert notes: [overlay INSTALL.md](https://github.com/rclarke009/shanten-sensei-overlay/blob/main/INSTALL.md) and [proxy-trust-precautions.md](proxy-trust-precautions.md).
@@ -32,7 +32,9 @@ The installer installs `shanten-sensei` from PyPI (or git) — you do **not** ne
 
 ## Mortal model
 
-Download an [Akagi](https://github.com/shinkuan/Akagi)-compatible Mortal `.pth`. The app does not redistribute weights.
+**Release `.dmg` builds** include the [VoidShine/mortal-298k](https://huggingface.co/VoidShine/mortal-298k) checkpoint (AGPL-3.0). License text: [overlay MORTAL_MODEL_NOTICE.md](https://github.com/rclarke009/shanten-sensei-overlay/blob/main/licenses/MORTAL_MODEL_NOTICE.md).
+
+**From-source installs** still need your own Akagi-compatible `.pth` ([Akagi](https://github.com/shinkuan/Akagi)).
 
 ## Optional LLM Why?
 
