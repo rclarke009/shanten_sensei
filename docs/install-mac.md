@@ -8,16 +8,19 @@ Practice / friend / vs-AI only — **not for ranked**.
 
 | Method | When to use |
 |--------|-------------|
-| **[Download .dmg](https://github.com/rclarke009/shanten-sensei-overlay/releases)** | Easiest — no Terminal |
+| **[Install-Shanten-Sensei.command](https://github.com/rclarke009/shanten-sensei-overlay/releases/latest)** | **Easiest** — download this one file from Releases, double-click |
+| **[Download .dmg](https://github.com/rclarke009/shanten-sensei-overlay/releases)** | Manual drag-to-Applications install |
 | **[One-click installer](https://github.com/rclarke009/shanten-sensei-overlay/blob/main/scripts/install-macos.command)** | From a cloned overlay repo before a Release exists |
 | **[Developer setup](live-setup.md)** | Contributing or Chromium / from-source |
 
 ### Download path (recommended)
 
-1. Get **ShantenSensei-macOS.dmg** from [overlay Releases](https://github.com/rclarke009/shanten-sensei-overlay/releases).
-2. Drag **Shanten Sensei** to Applications and open it (right-click → **Open** if macOS warns about an unsigned build).
-3. Complete the **first-run wizard**: practice acknowledgment, bundled Mortal model (AGPL), Safari companion, optional API key.
+1. Open [overlay Releases](https://github.com/rclarke009/shanten-sensei-overlay/releases/latest) and download **`Install-Shanten-Sensei.command`** (one file — ignore the rest unless you want license docs).
+2. Double-click it (right-click → **Open** if macOS blocks it the first time).
+3. It installs **Shanten Sensei** to Applications and opens the app. Complete the **first-run wizard** (bundled Mortal model, Safari companion, optional API key).
 4. Play Majsoul in **Safari**, join friend / practice / vs-AI, press **Why?** in the coach window.
+
+**Or** use the `.dmg` manually: drag **Shanten Sensei** to Applications (right-click → **Open** if macOS warns about an unsigned build).
 
 Full troubleshooting and proxy/cert notes: [overlay INSTALL.md](https://github.com/rclarke009/shanten-sensei-overlay/blob/main/INSTALL.md) and [proxy-trust-precautions.md](proxy-trust-precautions.md).
 
