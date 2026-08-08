@@ -51,7 +51,7 @@ fixtures/diverge_005/   # real: missed chi (aka)
 
 When the report includes top-level `mjai_log` + `player_id`, ingest replays the log to fill player rivers, visible discards, and dora indicators (so furiten / genbutsu / visible dora work on real exports). Thin single-entry fixtures without `mjai_log` are unchanged.
 
-`sensei serve <report.json>` opens a local review UI (diverge list + status strip). **Why?** calls the LLM on demand (`OPENAI_API_KEY` or `SENSEI_API_KEY`, from the environment or a repo-root `.env`). If the LLM is unavailable, the UI offers an offline template via `POST /api/explain/{n}?mode=template`.
+`sensei serve <report.json>` opens a local review UI (diverge list + status strip). **Why?** defaults to the offline template (`POST /api/explain/{n}`). Use `POST /api/explain/{n}?mode=llm` for LLM tips when `OPENAI_API_KEY` or `SENSEI_API_KEY` is set; failed grounding repairs to the template (same as `explain(use_llm=True)`).
 
 ## End-to-end check
 

@@ -381,7 +381,7 @@ def test_template_includes_fits_goals():
     assert "Throw" in result.summary
     assert "2-shanten (2 steps from ready)" in result.summary
     assert "ukeire (tiles that improve the hand)" in result.summary
-    assert "fits tanyao (2–8 only; no 1/9, winds, or dragons)" in result.summary
+    assert "builds toward tanyao (2–8 only; no 1/9, winds, or dragons)" in result.summary
     assert "dora (bonus tile)" in result.summary
     assert "3-sou" in result.summary.lower() or "3s" in result.summary
     assert validate_explanation(turn, result) == []
@@ -393,7 +393,7 @@ def test_template_glosses_multiple_goals():
     assert "honitsu (one suit + winds/dragons OK)" in result.summary
     assert "yakuhai (triplet of dragon or your seat/round wind)" in result.summary
     assert "dora (bonus tile)" in result.summary
-    assert "fits" in result.summary
+    assert "builds toward" in result.summary
     assert validate_explanation(turn, result) == []
 
 
@@ -441,7 +441,7 @@ def test_template_yakuhai_because_east_pair_not_chun():
     assert "Throw" in result.summary
     assert "1-man" in result.summary
     assert "Chun" in result.summary
-    assert "fits yakuhai (triplet of dragon or your seat/round wind)" in result.summary
+    assert "builds toward yakuhai (triplet of dragon or your seat/round wind)" in result.summary
     assert "pair of" in result.summary and "East" in result.summary
     assert "isn’t a value tile" in result.summary or "isn't a value tile" in result.summary
     assert "can still pair" in result.summary
@@ -452,7 +452,7 @@ def test_template_yakuhai_because_east_pair_not_chun():
 def test_template_omits_goals_when_empty():
     turn = _turn_with_goals(shape_goals=[])
     result = template_explain(turn)
-    assert "fits tanyao" not in result.summary
+    assert "builds toward tanyao" not in result.summary
     assert "shape leans" not in result.summary
     assert validate_explanation(turn, result) == []
 
@@ -473,7 +473,7 @@ def test_grounding_allows_listed_pinfu():
     turn = _turn_with_goals(shape_goals=["pinfu", "tanyao"])
     ok = Explanation(
         summary=(
-            "Throw 5-sou. That fits "
+            "Throw 5-sou. Throwing 5-sou builds toward "
             "pinfu (closed all-sequences; no value pair) / "
             "tanyao (2–8 only; no 1/9, winds, or dragons)."
         ),
@@ -488,7 +488,7 @@ def test_grounding_allows_listed_yaku_and_dora():
     turn = _turn_with_goals(shape_goals=["honitsu", "yakuhai"], dora_in_hand=["5m"])
     ok = Explanation(
         summary=(
-            "Throw 5-sou. That fits "
+            "Throw 5-sou. Throwing 5-sou builds toward "
             "honitsu (one suit + winds/dragons OK) / "
             "yakuhai (triplet of dragon or your seat/round wind) "
             "with dora (bonus tile) 5-man."

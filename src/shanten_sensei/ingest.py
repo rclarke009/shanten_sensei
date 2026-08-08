@@ -192,6 +192,10 @@ def turn_from_entry(
                 dora_indicators=dora_indicators,
             ),
         )
+    if call_tile:
+        features.context["call_tile"] = call_tile
+    if call_consumed:
+        features.context["call_consumed"] = call_consumed
 
     game_state = GameState(
         hand=hand,

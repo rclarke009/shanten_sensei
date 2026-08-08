@@ -9,7 +9,9 @@ Practice / friend / vs-AI only. Not for ranked ladder assistance.
 | [shanten_sensei](../README.md) (this repo) | Explainer library: `turn_from_live` → `explain()` | Apache-2.0 |
 | [shanten-sensei-overlay](https://github.com/rclarke009/shanten-sensei-overlay) | Fork of [MahjongCopilot](https://github.com/latorc/MahjongCopilot): Majsoul MITM → mjai → Mortal → HUD + **Why?** | GPL-3.0 |
 
-Do not merge the GPL overlay into this monorepo. The overlay depends on Sensei via `pip install -e ../shanten_sensei`.
+Do not merge the GPL overlay into this monorepo. The overlay depends on Sensei via `pip install 'shanten-sensei>=0.1.0'` (PyPI) or editable `pip install -e ../shanten_sensei` for development.
+
+**Mac players:** [`install-mac.md`](install-mac.md) — no sibling clone required.
 
 ## Live turn contract
 
@@ -50,20 +52,19 @@ Always show: *Practice / vs-AI / friend only — not for ranked*.
 
 ## Local setup (overlay)
 
-Player-facing steps (install, model, How to play a game): **[`live-setup.md`](live-setup.md)**.
+Player-facing steps (install, model, How to play a game): **[`install-mac.md`](install-mac.md)** (Mac) or **[`live-setup.md`](live-setup.md)** (developers).
 
 ```bash
-# sibling clones — see live-setup.md for full pins / Playwright notes
 cd ../shanten-sensei-overlay
 python3.11 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-pip install -e ../shanten_sensei
-PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium
-# place Mortal model (Akagi-compatible) as configured in settings
+pip install 'shanten-sensei>=0.1.0'
+# Dev: pip install -e ../shanten_sensei
+PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium   # optional if using Safari companion only
 python main.py
 ```
 
-Set `OPENAI_API_KEY` or `SENSEI_API_KEY` for LLM Why? (overlay `.env`, sibling `../shanten_sensei/.env`, or export); otherwise template fallback. Overlay `main.py` loads these at startup.
+Set `OPENAI_API_KEY` or `SENSEI_API_KEY` **and** `SENSEI_USE_LLM=1` for LLM Why? (overlay `.env`, `~/Library/Application Support/ShantenSensei/.env`, or export); otherwise template fallback. Overlay `main.py` loads these at startup.
 
 ## Non-goals (kickoff)
 

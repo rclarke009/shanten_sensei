@@ -15,7 +15,11 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-from shanten_sensei.features import danger_rank, genbutsu_discarders
+from shanten_sensei.features import (
+    alternate_cut_shape_note,
+    danger_rank,
+    genbutsu_discarders,
+)
 from shanten_sensei.glosses import ACCEPTANCES_GLOSS as _ACCEPTANCES_GLOSS
 from shanten_sensei.glosses import DANGER_GLOSS as _DANGER_GLOSS
 from shanten_sensei.glosses import DORA_GLOSS as _DORA_GLOSS
@@ -39,11 +43,19 @@ from shanten_sensei.live import (
     is_riichi_decision_turn,
     next_best_action,
 )
-from shanten_sensei.schema import Explanation, Focus, TurnExplainInput
+from shanten_sensei.grounding import (
+    SubstanceScore,
+    _mentions_tile,
+    score_explanation_substance,
+    validate_explanation,
+)
+from shanten_sensei.schema import Explanation, Focus, HandShapeNote, TurnExplainInput
 from shanten_sensei.tiles import (
     action_tile_arg,
+    chi_meld_label,
     coach_action_label,
     deaka,
+    enumerate_chi_melds,
     human_action_label,
     human_tile_label,
     is_call_action,
@@ -75,7 +87,10 @@ bare shanten / improving-tile counts unless citing a contrast \
 wall_note (e.g. \"only 1 copy of red 5-pin is still unseen\").
 
 For discard tips, lead with \"Throw X\" or \"Throw X, not Y\" using \
-tile_glossary / coach_action labels (e.g. 🀅Hatsu, 🀔5-sou).
+tile_glossary / coach_action labels (e.g. 🀅Hatsu, 🀔5-sou). When \
+hand_shape_notes justify the recommended cut (floating honor/terminal, \
+dead-end, kanchan/penchan break-up), put that shape reason on the next line \
+before ukeire contrast or named improving tiles.
 
 For call tips (mortal_best or contrast is none / pon / chi / kan — see \
 call_tradeoff), lead with \"Skip\" / \"Skip the pon on …\" / \"Skip the chi on …\" / \
@@ -86,7 +101,9 @@ shanten; open_ukeire_count vs stay_closed_ukeire when present; shape_goals \
 (e.g. still aiming for tanyao while holding terminals). \
 When recommending a call that opens the hand, do not say the hand is still \
 aiming for closed-only yaku (pinfu, chiitoi / seven pairs)—cite tempo, \
-shanten, or call_tradeoff instead.
+shanten, or call_tradeoff instead. On chi tips, name the sequence meld: \
+\"for 6-7-8 sou\" when call_consumed is known, or list all valid melds when \
+call_consumed is absent (e.g. \"you could meld 6-7-8 sou or 7-8-9 sou\").
 
 Use \"open\" / \"closed\" only for called vs menzen (call tips / \
 call_tradeoff)—e.g. \"Calling would open the hand\" or \"You’re still … \
@@ -131,8 +148,8 @@ shape_goals (with glossary parentheticals), hand_shape_notes (floating \
 terminal/honor, isolated kanchan/penchan, dead-end — these describe why the \
 recommended cut is weak/useless and apply only to the recommended cut tile \
 named in those notes, e.g. \"North is a dead-end tile\", \
-\"9-pin is a floating terminal\", \"2-man clears a closed middle (kanchan) shape\" / \
-\"8-man clears an edge (penchan) shape\"; never attach those notes to the \
+\"9-pin is a floating terminal\", \"2-man breaks up a closed middle (kanchan) shape\" / \
+\"8-man breaks up an edge (penchan) shape\"; never attach those notes to the \
 alternate cut or another hand tile; never write \"kanchan/penchan/fragment on \
 {tile}\" — that sounds like a wait; if naming both ends say \"6–8 kanchan\", never \
 \"kanchan on 8-man\"; never say you keep / maintain / preserve a dead-end, \
@@ -153,12 +170,16 @@ thinning\", or \"left in the wall\". Use copy-specific unseen language instead: 
 facts are about remaining unseen copies of improving tiles, not the alternate \
 cut’s acceptance count—never rewrite them as \"N improving tiles if you throw …\". \
 Only invent an improving-tile vs/if-you-throw contrast when wall_note is already \
-that contrast form (\"about N … vs about M if you throw …\"). Never invent \
-unseen wall math, opponent-hand contents, or discard reasons not supported by \
-those fields.
+that contrast form (\"about N … vs about M if you throw …\"). When naming \
+alternate improving tiles, use \"If you threw {alternate} instead, you'd mostly \
+improve via …\" — never bare \"Throwing {alternate} …\" which reads like a \
+second recommendation. Never invent unseen wall math, opponent-hand contents, \
+or discard reasons not supported by those fields.
 
 If shape_goals is non-empty, you may name only those goals as likely hand shape \
-(not as Mortal’s internal plan). Prefer \"fits tanyao (…)\" over \"shape leans\". \
+(not as Mortal’s internal plan). Link the recommended move to the goal with \
+\"{move} builds toward {goal} (…)\" (e.g. \"Throwing West builds toward tanyao (…)\") \
+— not vague \"That fits {goal}\". \
 When you name a goal or dora, include the short parenthetical ONLY when that \
 term appears in shape_goal_glossary (e.g. \"tanyao (2–8 only; no 1/9, winds, or \
 dragons)\", \"dora (bonus tile)\"). If a term is missing from the glossary maps, \
@@ -178,22 +199,25 @@ singletons in yakuhai_singleton_value_tiles use \"can still pair\", never \
 \"pair of\". Never say an alternate \"would not help … aiming for yakuhai\" \
 without naming those tile facts.
 
-Put a line break (\\n) in summary between the move/ukeire chunk and the \
-hand-state / aiming chunk when both are present. Do not use a blank line.
+Format summary as bullet lists: prefix each teaching beat with \"• \" on its own \
+line; use \\n\\n between the move/ukeire block and the shanten/goals/defense \
+block when both are present. Never semicolon-glue contrast named-tile lines.
 
-Example discard voice: \"Throw 🀂West. That leaves about 55 tiles that can \
-improve your hand, vs about 41 if you throw 🀖7-sou.\\nYou’re 1-shanten \
-(1 step from ready). That fits tanyao (2–8 only; no 1/9, winds, or dragons)—🀂West \
-is a floating honor outside tanyao.\"
+Example discard voice: \"• Throw 🀂West.\\n• That leaves about 55 tiles that can \
+improve your hand, vs about 41 if you throw 🀖7-sou.\\n\\n• You’re 1-shanten \
+(1 step from ready).\\n• Throwing 🀂West builds toward tanyao (2–8 only; no 1/9, winds, or dragons)—it \
+can't stay in that hand.\"
 
-Example mid-hand voice: \"Throw 🀡9-pin, not 🀔5-sou. You’re 2-shanten (2 steps \
-from ready) with about 40 ukeire (tiles that improve the hand).\\n🀡9-pin is \
+Example ukeire-contrast voice: \"• Throw 🀊4-man, not 🀔2-sou.\\n• That leaves about 47 improving tiles left vs about 42 if you throw 🀔2-sou.\\n• Throwing 🀊4-man keeps draws like 🀌6-man, 🀍7-man, 🀎8-man, and 🀏9-man.\\n• If you threw 🀔2-sou instead, you'd mostly improve via 🀊4-man, 🀌6-man, 🀍7-man, and 🀎8-man.\\n\\n• You're 3-shanten (3 steps from ready).\"
+
+Example mid-hand voice: \"• Throw 🀡9-pin, not 🀔5-sou.\\n• You’re 2-shanten (2 steps \
+from ready) with about 40 ukeire (tiles that improve the hand).\\n\\n• 🀡9-pin is \
 a floating terminal outside tanyao (2–8 only; no 1/9, winds, or dragons).\"
 
-Example dead-end voice: \"Throw 🀃North.\\n🀃North is a dead-end tile—it connects \
+Example dead-end voice: \"• Throw 🀃North.\\n\\n• 🀃North is a dead-end tile—it connects \
 to nothing useful.\"
 
-Example yakuhai voice: \"Throw 🀇1-man, not 🀄Chun.\\nThat fits yakuhai (triplet of \
+Example yakuhai voice: \"• Throw 🀇1-man, not 🀄Chun.\\n\\n• Throwing 🀇1-man builds toward yakuhai (triplet of \
 dragon or your seat/round wind)—you’re holding a pair of 🀀East for that; 🀇1-man \
 isn’t a value tile, while 🀄Chun can still pair.\"
 
@@ -203,89 +227,36 @@ is true, name furiten_blocking_tiles if present (tiles you already discarded \
 that are also waits) and explain that ron is blocked on every wait—you can \
 only win by tsumo (self-draw).
 
-Example tenpai voice: \"Throw 🀊4-man, not 🀌6-man. That keeps a ryanmen \
-(two-sided open) wait.\\nYou’re furiten—you already discarded 🀖7-sou, so you \
+Example tenpai voice: \"• Throw 🀊4-man, not 🀌6-man.\\n• That keeps a ryanmen \
+(two-sided open) wait.\\n\\n• You’re furiten—you already discarded 🀖7-sou, so you \
 can’t win on any discard (only tsumo).\"
 
-Example call voice: \"Skip the pon on 🀒3-sou. You’re still 2-shanten (2 steps \
-from ready) closed with about 55 improving tiles.\\nCalling would open the \
+Example call voice: \"• Skip the pon on 🀒3-sou.\\n• You’re still 2-shanten (2 steps \
+from ready) closed with about 55 improving tiles.\\n\\n• Calling would open the \
 hand—no riichi—while you’re still aiming for tanyao (2–8 only; no 1/9, winds, \
 or dragons) and holding terminals.\"
 
-Example call (chi) voice: \"Chi 🀖7-sou, don’t skip. You’re 1-shanten (1 step \
-from ready) closed with about 11 improving tiles.\\nThat gets you closer than \
-staying closed. That opens the hand—no riichi.\"
+Example call (chi) voice: \"• Chi 🀖7-sou for 6-7-8 sou, don’t skip.\\n• You’re 1-shanten (1 step \
+from ready) closed with about 11 improving tiles.\\n\\n• That gets you closer than \
+staying closed.\\n• That opens the hand—no riichi.\"
 
-Example defense voice: \"Throw 🀊4-man, not 🀌6-man. 🀊4-man is suji—if someone \
+Example defense voice: \"• Throw 🀊4-man, not 🀌6-man.\\n• 🀊4-man is suji—if someone \
 waited on the edge tiles in that suit, they'd likely have discarded 🀊4-man \
-already.\\nAn opponent is in riichi—safety matters.\"
+already.\\n\\n• An opponent is in riichi—safety matters.\"
 
-Example riichi voice: \"Declare riichi, discard 🀡9-pin. You’re tenpai (ready) \
-with a ryanmen (two-sided open) wait.\\nYou have dora (bonus tile) in hand.\"
+Example riichi voice: \"• Declare riichi, discard 🀡9-pin.\\n• You’re tenpai (ready) \
+with a ryanmen (two-sided open) wait.\\n\\n• You have dora (bonus tile) in hand.\"
 
-Example hora voice: \"Take the win. You’re complete (winning hand).\\nWin on \
-🀛2-sou (tanki (pair)).\\nYou have dora (bonus tile) in hand.\"
+Example hora voice: \"• Take the win.\\n• You’re complete (winning hand).\\n\\n• Win on \
+🀛2-sou (tanki (pair)).\\n• You have dora (bonus tile) in hand.\"
 
 Return JSON with exactly these keys:
-- summary: string (two or three short sentences; use \\n between move and state when both appear)
+- summary: string (bullet list; use \\n\\n between move and state blocks when both appear)
 - focus: one of "efficiency", "defense", "value", "tempo", "mixed" (enum only, never prose)
 - pinned_action: must equal mortal_best
 - contrasted_action: player's action when it differs; else next-best candidate; else null
 """
 
-# Tautological efficiency / Mortal-% claims with no hand-fact anchors.
-_THIN_CLAIM_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
-    re.compile(p, re.IGNORECASE)
-    for p in (
-        r"\bmore efficient\b",
-        r"\bhigher efficiency\b",
-        r"\befficiency is worse\b",
-        r"\bhigher (?:probability|chance)\b",
-        r"\bkeeps? (?:your )?(?:hand )?(?:flexible|options open)\b",
-        r"\bimproving your hand\b",
-        r"\bchance of (?:improving|helping)\b",
-        r"\d+(?:\.\d+)?%\b",
-    )
-)
-
-# LLM inverted polarity: cut-shape notes are reasons to discard, not keep.
-# Do not match wait phrasing like "That keeps a ryanmen wait".
-_CUT_NOTE_POLARITY_PATTERN = re.compile(
-    r"\b(?:maintain(?:s|ing)?|keep(?:s|ing)?|preserve(?:s|ing)?)\s+"
-    r"(?:a\s+|an\s+)?"
-    r"(?:dead[-\s]?end|floating|isolated|closed\s+middle|kanchan|penchan|edge)\b",
-    re.IGNORECASE,
-)
-
-# Figurative "hand open" for ukeire — conflates with called (furo) hands.
-# Do not match call copy ("open the hand") or wait glosses ("two-sided open").
-_FIGURATIVE_HAND_OPEN_PATTERN = re.compile(
-    r"(?:\bkeep(?:s|ing)? (?:your )?hand open\b|\bhand open with\b)",
-    re.IGNORECASE,
-)
-
-# Throw X then "keep it" / "better to keep" — pronoun or vague keep of the cut.
-_PINNED_CUT_KEEP_IT_PATTERN = re.compile(
-    r"\b(?:(?:still\s+)?better\s+to\s+keep|keep(?:s|ing)?\s+it(?:\s+for\s+now)?)\b",
-    re.IGNORECASE,
-)
-
-
-# Yaku / shape words the LLM might invent — only allowed if in shape_goals
-# (plus "dora" when dora_in_hand is present).
-_YAKU_MENTION_PATTERNS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("tanyao", (r"\btanyao\b", r"\ball\s+simples\b")),
-    ("yakuhai", (r"\byakuhai\b", r"\bvalue\s+honor")),
-    ("honitsu", (r"\bhonitsu\b", r"\bhalf\s+flush\b")),
-    ("chinitsu", (r"\bchinitsu\b", r"\bfull\s+flush\b")),
-    ("toitoi", (r"\btoitoi\b", r"\ball\s+triplets\b", r"\ball\s+pons\b")),
-    ("chiitoi", (r"\bchiitoitsu\b", r"\bchiitoi\b", r"\bseven\s+pairs\b")),
-    ("ittsu", (r"\bittsu\b", r"\biitsu\b", r"\bpure\s+straight\b")),
-    ("pinfu", (r"\bpinfu\b",)),
-    ("iipeiko", (r"\biipeiko\b", r"\biipeikou\b")),
-    ("sanshoku", (r"\bsanshoku\b",)),
-    ("dora", (r"\bdora\b",)),
-)
 
 # Closed-hand-only yaku: drop from coaching when Mortal recommends an open call.
 CLOSED_ONLY_GOALS = frozenset({"pinfu", "chiitoi"})
@@ -327,158 +298,6 @@ def _dora_in_hand_sentence() -> str:
     return "You have dora (bonus tile) in hand"
 
 
-@dataclass(frozen=True)
-class SubstanceScore:
-    """Offline/runtime substance metric for Why? summaries."""
-
-    thin: bool
-    anchors: list[str] = field(default_factory=list)
-    issues: list[str] = field(default_factory=list)
-
-
-def _wall_facts_available(turn: TurnExplainInput) -> bool:
-    ukeire = turn.features.ukeire
-    remaining = ukeire.remaining_by_tile
-    if remaining and any(remaining.get(t, 0) <= 1 for t in ukeire.tiles):
-        return True
-    alt = turn.features.ukeire_alt
-    if alt is not None and turn.features.ukeire.count - alt.count >= 3:
-        return True
-    return False
-
-
-def _turn_has_usable_anchors(turn: TurnExplainInput) -> bool:
-    """True when the turn has at least one citeable hand fact."""
-    if turn.features.shanten is not None:
-        return True
-    if turn.features.statuses.wait_shape:
-        return True
-    if turn.features.shape_goals:
-        return True
-    if turn.features.hand_shape_notes:
-        return True
-    if turn.features.statuses.dora_in_hand:
-        return True
-    if turn.features.call_tradeoff is not None:
-        return True
-    if turn.features.danger:
-        return True
-    if turn.features.score_situation is not None:
-        return True
-    if _wall_facts_available(turn):
-        return True
-    return False
-
-
-def _feature_anchors_in_summary(turn: TurnExplainInput, summary_l: str) -> list[str]:
-    """Which citeable features the summary actually mentions."""
-    anchors: list[str] = []
-
-    if re.search(r"\b\d+-shanten\b", summary_l) or re.search(r"\bshanten\b", summary_l):
-        anchors.append("shanten")
-    wall_lang = bool(
-        re.search(r"\balready out\b", summary_l)
-        or re.search(r"\bstill unseen\b", summary_l)
-        or re.search(r"\blive acceptances?\b", summary_l)
-        or re.search(r"\bimproving tiles\b", summary_l)
-        or re.search(r"\b\d+\s*[×x]\b", summary_l)
-        or re.search(r"\bfew copies left of tiles you need\b", summary_l)
-    )
-    if (
-        re.search(r"\bacceptances?\b", summary_l)
-        or re.search(r"\bukeire\b", summary_l)
-        or (
-            re.search(r"\bimproving tiles\b", summary_l)
-            and re.search(r"\bvs about\b", summary_l)
-        )
-        or (_wall_facts_available(turn) and wall_lang)
-    ):
-        anchors.append("ukeire")
-
-    wait_shape = turn.features.statuses.wait_shape
-    if wait_shape and wait_shape in summary_l:
-        anchors.append("wait_shape")
-
-    for goal in coaching_shape_goals(turn):
-        if re.search(rf"\b{re.escape(goal)}\b", summary_l):
-            anchors.append("shape_goal")
-            break
-
-    if turn.features.hand_shape_notes and (
-        re.search(r"\bfloating\b", summary_l)
-        or re.search(r"\bdead-end\b", summary_l)
-        or re.search(r"\bdead end\b", summary_l)
-        or re.search(r"\bclosed middle\b", summary_l)
-        or re.search(r"\bedge\b", summary_l)
-        or re.search(r"\bkanchan\b", summary_l)
-        or re.search(r"\bpenchan\b", summary_l)
-    ):
-        anchors.append("hand_shape_note")
-
-    if turn.features.statuses.dora_in_hand and re.search(r"\bdora\b", summary_l):
-        anchors.append("dora")
-
-    if turn.features.danger and (
-        re.search(r"\bgenbutsu\b", summary_l)
-        or re.search(r"\bsuji\b", summary_l)
-        or re.search(r"\bone-chance\b", summary_l)
-        or re.search(r"\bone chance\b", summary_l)
-        or re.search(r"\bcan'?t\s+ron\b", summary_l)
-        or (
-            re.search(r"\balready\s+discarded\b", summary_l)
-            and not re.search(r"\bfuriten\b", summary_l)
-        )
-    ):
-        anchors.append("danger")
-
-    if turn.features.call_tradeoff is not None and (
-        re.search(r"\bskip\b", summary_l)
-        or re.search(r"\bcall\b", summary_l)
-        or re.search(r"\bopen\b", summary_l)
-        or re.search(r"\briichi\b", summary_l)
-    ):
-        anchors.append("call_tradeoff")
-
-    sit = turn.features.score_situation
-    if sit is not None and (
-        re.search(r"\briichi\b", summary_l)
-        or re.search(r"\bleading\b", summary_l)
-        or re.search(r"\btrailing\b", summary_l)
-        or re.search(r"\bahead\b", summary_l)
-        or re.search(r"\bbehind\b", summary_l)
-        or re.search(r"\bscores are close\b", summary_l)
-        or re.search(r"\bsafety\b", summary_l)
-        or re.search(r"\blate\b", summary_l)
-        or re.search(r"\bwall\b", summary_l)
-        or re.search(r"\bpoints?\b", summary_l)
-    ):
-        anchors.append("score_situation")
-
-    if is_riichi_decision_turn(turn) and (
-        re.search(r"\bdeclare riichi\b", summary_l)
-        or re.search(r"\bstay silent\b", summary_l)
-    ):
-        anchors.append("riichi_decision")
-
-    if is_hora_decision_turn(turn) and re.search(r"\btake the win\b", summary_l):
-        anchors.append("hora_decision")
-
-    return anchors
-
-
-def score_explanation_substance(turn: TurnExplainInput, summary: str) -> SubstanceScore:
-    """Score whether a Why? summary cites hand facts or only tautological efficiency."""
-    summary_l = summary.lower()
-    anchors = _feature_anchors_in_summary(turn, summary_l)
-    has_thin_claim = any(p.search(summary_l) for p in _THIN_CLAIM_PATTERNS)
-    thin = (
-        _turn_has_usable_anchors(turn)
-        and not anchors
-        and has_thin_claim
-    )
-    issues = ["thin_efficiency_claim"] if thin else []
-    return SubstanceScore(thin=thin, anchors=anchors, issues=issues)
-
 
 def _unseen_copy_phrase(label: str, copies: int) -> str:
     """How many unseen copies of a useful tile remain (not draw-pile depletion)."""
@@ -489,26 +308,43 @@ def _unseen_copy_phrase(label: str, copies: int) -> str:
     return f"only {copies}× {label} still unseen"
 
 
+def _contrast_alt_action(turn: TurnExplainInput) -> str | None:
+    """Action whose ukeire_alt / danger contrast the tip compares against."""
+    if turn.diverge and turn.player_action != turn.mortal_best:
+        return turn.player_action
+    return next_best_action(turn)
+
+
+def _ukeire_contrast_note_text(
+    turn: TurnExplainInput, ukeire_count: int, alt_count: int
+) -> str:
+    alt_action = _contrast_alt_action(turn)
+    alt_label = human_action_label(alt_action) if alt_action else "the alternate cut"
+    return (
+        f"about {ukeire_count} improving tiles left vs about {alt_count} "
+        f"if you throw {alt_label}"
+    )
+
+
 def _wall_note_detail(turn: TurnExplainInput) -> tuple[str | None, str | None]:
-    """Return (kind, text): kind is 'contrast' | 'thin', or (None, None)."""
+    """Return (kind, text): contrast | narrow_contrast | thin, or (None, None)."""
     ukeire = turn.features.ukeire
     remaining = ukeire.remaining_by_tile
     thin = [(t, n) for t, n in remaining.items() if n <= 1 and t in ukeire.tiles]
     alt = turn.features.ukeire_alt
 
-    if alt is not None and ukeire.count - alt.count >= 3:
-        if turn.diverge and turn.player_action != turn.mortal_best:
-            alt_action = turn.player_action
-        else:
-            alt_action = next_best_action(turn)
-        alt_label = human_action_label(alt_action) if alt_action else "the alternate cut"
-        return (
-            "contrast",
-            (
-                f"about {ukeire.count} improving tiles left vs about {alt.count} "
-                f"if you throw {alt_label}"
-            ),
-        )
+    if alt is not None:
+        gap = ukeire.count - alt.count
+        if gap >= 3:
+            return (
+                "contrast",
+                _ukeire_contrast_note_text(turn, ukeire.count, alt.count),
+            )
+        if 1 <= gap < 3:
+            return (
+                "narrow_contrast",
+                _ukeire_contrast_note_text(turn, ukeire.count, alt.count),
+            )
 
     if thin:
         thin.sort(key=lambda x: (x[1], x[0]))
@@ -764,19 +600,46 @@ def _sentence_case(text: str) -> str:
     return text[0].upper() + text[1:]
 
 
-def _join_sentence_list(sentences: list[str]) -> str:
+def _join_sentence_list(sentences: list[str], *, between: str = ". ") -> str:
     if not sentences:
         return ""
-    return ". ".join(s.rstrip(".") for s in sentences) + "."
+    return between.join(s.rstrip(".") for s in sentences) + "."
 
 
-def _join_summary_paragraphs(first: list[str], second: list[str]) -> str:
-    """Join two sentence groups; insert a newline between non-empty paragraphs."""
-    a = _join_sentence_list(first)
-    b = _join_sentence_list(second)
+_BULLET_PREFIX = "• "
+
+
+def _state_sentence_join(state_sents: list[str]) -> str:
+    return ".\n" if len(state_sents) > 1 else ". "
+
+
+def _join_summary_paragraphs(
+    first: list[str],
+    second: list[str],
+    *,
+    first_between: str = ". ",
+    second_between: str = ". ",
+) -> str:
+    """Join two sentence groups; insert a blank line between non-empty paragraphs."""
+    a = _join_sentence_list(first, between=first_between)
+    b = _join_sentence_list(second, between=second_between)
     if a and b:
-        return f"{a}\n{b}"
+        return f"{a}\n\n{b}"
     return a or b
+
+
+def _apply_bullet_format(summary: str) -> str:
+    """Turn newline-separated prose into bullet lists per blank-line paragraph."""
+    groups: list[str] = []
+    for para in summary.split("\n\n"):
+        lines = [
+            ln.strip().removeprefix(_BULLET_PREFIX).strip()
+            for ln in para.split("\n")
+            if ln.strip()
+        ]
+        if lines:
+            groups.append("\n".join(f"{_BULLET_PREFIX}{ln}" for ln in lines))
+    return "\n\n".join(groups)
 
 
 def _format_tile_list(labels: list[str]) -> str:
@@ -789,14 +652,14 @@ def _format_tile_list(labels: list[str]) -> str:
     return ", ".join(labels[:-1]) + f", and {labels[-1]}"
 
 
-def _named_improving_tiles_sentence(turn: TurnExplainInput) -> str | None:
+def _named_improving_tiles_sentences(turn: TurnExplainInput) -> list[str]:
     """Name example improving tiles when ukeire contrast is large."""
     ukeire = turn.features.ukeire
     alt = turn.features.ukeire_alt
     if alt is None or ukeire.count - alt.count < 3:
-        return None
+        return []
     if len(ukeire.tiles) < 2:
-        return None
+        return []
     best_raw = _action_tile_token_raw(turn.mortal_best)
     alt_action = _contrast_alt_action(turn)
     alt_raw = _action_tile_token_raw(alt_action) if alt_action else None
@@ -805,12 +668,34 @@ def _named_improving_tiles_sentence(turn: TurnExplainInput) -> str | None:
     best_named = _format_tile_list(
         [human_tile_label(t) for t in ukeire.tiles[:4]]
     )
-    lead = f"Throwing {best_label} keeps draws like {best_named}"
+    sentences = [f"Throwing {best_label} keeps draws like {best_named}"]
     if alt.tiles and len(alt.tiles) >= 2:
         alt_named = _format_tile_list(
             [human_tile_label(t) for t in alt.tiles[:4]]
         )
-        return f"{lead}; throwing {alt_label} mostly improves via {alt_named}"
+        sentences.append(
+            f"If you threw {alt_label} instead, you'd mostly improve via {alt_named}"
+        )
+    return sentences
+
+
+def _improving_tiles_preview_sentence(
+    turn: TurnExplainInput,
+    *,
+    move_sents: list[str],
+) -> str | None:
+    """Name example improving tiles when contrasted but ukeire gap is zero."""
+    ukeire = turn.features.ukeire
+    if len(ukeire.tiles) < 2:
+        return None
+    best_raw = _action_tile_token_raw(turn.mortal_best)
+    best_label = human_tile_label(best_raw) if best_raw else "this cut"
+    best_named = _format_tile_list(
+        [human_tile_label(t) for t in ukeire.tiles[:4]]
+    )
+    lead = f"Throwing {best_label} keeps draws like {best_named}"
+    if any("keeps draws like" in s.lower() for s in move_sents):
+        return None
     return lead
 
 
@@ -996,14 +881,15 @@ def build_detail_paragraph(turn: TurnExplainInput) -> str | None:
         glossed = _glossed_danger(tag) or tag
         bits.append(f"{human_tile_label(best_code)} is {glossed}")
 
-    for note in turn.features.hand_shape_notes[:2]:
-        gloss = _SHAPE_NOTE_GLOSS.get(note.kind)
-        if not gloss:
-            continue
-        if term_is_known(note.kind):
-            bits.append(f"{human_tile_label(note.tile)} — {note.kind}")
-        else:
-            bits.append(f"{human_tile_label(note.tile)} — {gloss}")
+    if not _defense_led_for_discard(turn):
+        for note in turn.features.hand_shape_notes[:2]:
+            gloss = _SHAPE_NOTE_GLOSS.get(note.kind)
+            if not gloss:
+                continue
+            if term_is_known(note.kind):
+                bits.append(f"{human_tile_label(note.tile)} — {note.kind}")
+            else:
+                bits.append(f"{human_tile_label(note.tile)} — {gloss}")
 
     if _score_tips_enabled(turn):
         ss = turn.features.score_situation
@@ -1057,6 +943,7 @@ def _finalize_explanation(
             )
     summary = _merge_detail_into_summary(explanation.summary, detail)
     summary = _ensure_tile_emojis(summary, turn)
+    summary = _apply_bullet_format(summary)
     return explanation.model_copy(update={"summary": summary, "detail": detail})
 
 
@@ -1102,10 +989,23 @@ def _bare_tile_patterns(tile: str) -> list[str]:
     return ordered
 
 
+_CHI_MELD_RE = re.compile(
+    r"\b\d-\d-\d (?:man|pin|sou)\b",
+    re.IGNORECASE,
+)
+
+
 def _ensure_tile_emojis(text: str, turn: TurnExplainInput) -> str:
     """Rewrite bare tile names to emoji+name labels (e.g. 2-man → 🀈2-man)."""
     if not text:
         return text
+    meld_placeholders: list[str] = []
+
+    def _shield_meld(match: re.Match[str]) -> str:
+        meld_placeholders.append(match.group(0))
+        return f"__CHI_MELD_{len(meld_placeholders) - 1}__"
+
+    text = _CHI_MELD_RE.sub(_shield_meld, text)
     next_best = next_best_action(turn)
     codes = set(_tile_glossary_for_turn(turn, next_best))
     reach_discard = (turn.features.context or {}).get("reach_discard")
@@ -1130,6 +1030,8 @@ def _ensure_tile_emojis(text: str, turn: TurnExplainInput) -> str:
                 text,
                 flags=re.IGNORECASE,
             )
+    for idx, meld in enumerate(meld_placeholders):
+        text = text.replace(f"__CHI_MELD_{idx}__", meld)
     return text
 
 
@@ -1270,15 +1172,12 @@ def _note_for_cut(turn: TurnExplainInput, cut_raw: str | None):
     return turn.features.hand_shape_notes[0]
 
 
-def _midhand_shape_clause(
+def _midhand_shape_clause_from_note(
     turn: TurnExplainInput,
-    cut_raw: str | None,
+    note: HandShapeNote,
     cut_label: str,
 ) -> str | None:
-    """Short clause/sentence for floating / isolated / dead-end cuts."""
-    note = _note_for_cut(turn, cut_raw)
-    if note is None:
-        return None
+    """Short clause/sentence for a single hand-shape note."""
     goals = [g for g in turn.features.shape_goals if g]
     primary = goals[0] if goals else None
     if note.kind == "floating_terminal":
@@ -1296,42 +1195,207 @@ def _midhand_shape_clause(
             )
         return f"{cut_label} is a floating honor"
     if note.kind == "isolated_kanchan":
-        return f"{cut_label} clears a closed middle (kanchan) shape"
+        return f"{cut_label} breaks up a closed middle (kanchan) shape"
     if note.kind == "isolated_penchan":
-        return f"{cut_label} clears an edge (penchan) shape"
+        return f"{cut_label} breaks up an edge (penchan) shape"
     if note.kind == "dead_end":
         return f"{cut_label} is a dead-end tile"
     return None
 
 
-def _shape_goal_phrase(turn: TurnExplainInput) -> str | None:
-    """Human phrase for heuristic shape goals (+ dora when present)."""
+def _midhand_shape_clause(
+    turn: TurnExplainInput,
+    cut_raw: str | None,
+    cut_label: str,
+) -> str | None:
+    """Short clause/sentence for floating / isolated / dead-end cuts."""
+    note = _note_for_cut(turn, cut_raw)
+    if note is None:
+        return None
+    return _midhand_shape_clause_from_note(turn, note, cut_label)
+
+
+def _alternate_midhand_shape_clause(
+    turn: TurnExplainInput, contrasted_action: str | None
+) -> str | None:
+    """Shape teaching for the contrasted (non-Mortal) cut tile."""
+    if not contrasted_action:
+        return None
+    alt_raw = _action_tile_token_raw(contrasted_action)
+    if not alt_raw:
+        return None
+    note = alternate_cut_shape_note(
+        turn.game_state.hand,
+        cut_tile=alt_raw,
+        shape_goals=turn.features.shape_goals,
+        shanten=turn.features.shanten,
+    )
+    if note is None:
+        return None
+    alt_label = human_tile_label(alt_raw)
+    return _midhand_shape_clause_from_note(turn, note, alt_label)
+
+
+def _gerund_move_subject(lead: str) -> str:
+    """Imperative coach lead → gerund subject for 'builds toward' links."""
+    lead = lead.strip().removeprefix(_BULLET_PREFIX).strip()
+    if lead.startswith("Throw "):
+        tile_part = lead[6:].split(",")[0].strip()
+        return f"Throwing {_label_without_emoji(tile_part)}"
+    if lead.startswith("Skip the "):
+        return f"Skipping the {lead[9:]}"
+    if lead == "Skip":
+        return "Skipping"
+    if lead.startswith("Skip "):
+        return f"Skipping {lead[5:]}"
+    if lead.startswith("Call pon on "):
+        return f"Calling pon on {lead[12:]}"
+    if lead.startswith("Call pon"):
+        return "Calling pon"
+    if lead.startswith("Chi "):
+        return f"Calling chi on {lead[4:]}"
+    if lead.startswith("Call kan on "):
+        return f"Calling kan on {lead[12:]}"
+    if lead.startswith("Call kan"):
+        return "Calling kan"
+    return lead
+
+
+def _shape_goal_tail(turn: TurnExplainInput) -> str | None:
+    """Goal fragment for builds-toward lines (glossed goals + optional dora)."""
     goals = coaching_shape_goals(turn)
     dora = turn.features.statuses.dora_in_hand
-    if not goals and not dora:
+    if not goals:
         return None
-    if goals:
-        lean = " / ".join(_glossed_goal(g) for g in goals)
-        if dora:
-            return f"fits {lean} with {_glossed_dora_phrase(human_tile_label(dora[0]))}"
-        return f"fits {lean}"
-    # Dora only — still useful value signal
+    lean = " / ".join(_glossed_goal(g) for g in goals)
+    if dora:
+        return f"{lean} with {_glossed_dora_phrase(human_tile_label(dora[0]))}"
+    return lean
+
+
+def _shape_goal_phrase(turn: TurnExplainInput) -> str | None:
+    """Dora-only phrase when there are no coached shape goals."""
+    if _shape_goal_tail(turn):
+        return None
+    dora = turn.features.statuses.dora_in_hand
+    if not dora:
+        return None
     return f"keeping {_glossed_dora_phrase(human_tile_label(dora[0]))}"
 
 
-def _call_skip_lead(call_action: str | None) -> str:
+def _shape_goal_builds_toward_sentence(
+    move_subject: str, turn: TurnExplainInput
+) -> str | None:
+    tail = _shape_goal_tail(turn)
+    if not tail:
+        return None
+    return f"{move_subject} builds toward {tail}"
+
+
+def _shape_goal_state_sentence(
+    turn: TurnExplainInput,
+    move_subject: str,
+    *,
+    best_raw: str | None = None,
+    contrasted_action: str | None = None,
+) -> str | None:
+    """State-paragraph shape line: move-linked builds-toward or dora-only."""
+    builds = _shape_goal_builds_toward_sentence(move_subject, turn)
+    if builds:
+        if (
+            "tanyao" in turn.features.shape_goals
+            and best_raw
+            and _is_terminal_or_honor(best_raw)
+        ):
+            builds += "—it can't stay in that hand"
+        else:
+            alt_raw = (
+                _action_tile_token_raw(contrasted_action)
+                if contrasted_action
+                else None
+            )
+            yakuhai_bit = _yakuhai_because_clause(turn, best_raw, alt_raw)
+            if yakuhai_bit:
+                builds += yakuhai_bit
+        return builds
+    goal_bit = _shape_goal_phrase(turn)
+    if goal_bit:
+        return _sentence_case(goal_bit)
+    return None
+
+
+def _meld_consumed_bases(
+    meld: tuple[str, str, str], call_tile: str
+) -> frozenset[str]:
+    call_d = deaka(normalize_tile(call_tile))
+    return frozenset(
+        deaka(normalize_tile(t))
+        for t in meld
+        if deaka(normalize_tile(t)) != call_d
+    )
+
+
+def _chi_meld_detail(turn: TurnExplainInput, call_action: str) -> str | None:
+    """Sequence meld phrase for chi skip/call tips."""
+    if parse_action_kind(call_action) != "chi":
+        return None
+    ctx = turn.features.context or {}
+    call_tile = action_tile_arg(call_action) or ctx.get("call_tile")
+    if not call_tile:
+        return None
+    call_tile = normalize_tile(str(call_tile))
+    melds = enumerate_chi_melds(turn.game_state.hand, call_tile)
+    if not melds:
+        return None
+
+    consumed_raw = ctx.get("call_consumed")
+    if consumed_raw:
+        consumed_set = frozenset(
+            deaka(normalize_tile(str(t))) for t in consumed_raw
+        )
+        matched = [
+            m for m in melds if _meld_consumed_bases(m, call_tile) == consumed_set
+        ]
+        if matched:
+            return f"for {chi_meld_label(matched[0])}"
+
+    if len(melds) == 1:
+        return f"for {chi_meld_label(melds[0])}"
+
+    labels = [chi_meld_label(m) for m in melds]
+    if len(labels) == 2:
+        return f"—you could meld {labels[0]} or {labels[1]}"
+    joined = ", ".join(labels[:-1]) + f" or {labels[-1]}"
+    return f"—you could meld {joined}"
+
+
+def _append_chi_meld_to_label(label: str, meld_detail: str | None) -> str:
+    if not meld_detail:
+        return label
+    if meld_detail.startswith("—"):
+        return label + meld_detail
+    return f"{label} {meld_detail}"
+
+
+def _call_skip_lead(
+    call_action: str | None, turn: TurnExplainInput | None = None
+) -> str:
     """Lead sentence when Mortal prefers Skip over a call."""
     if not call_action:
         return "Skip"
     kind = parse_action_kind(call_action)
     tile = action_tile_arg(call_action)
+    meld = _chi_meld_detail(turn, call_action) if turn and kind == "chi" else None
     if kind == "pon":
         if tile:
             return f"Skip the pon on {human_tile_label(tile)}"
         return "Skip the pon"
     if kind == "chi":
         if tile:
-            return f"Skip the chi on {human_tile_label(tile)}"
+            lead = f"Skip the chi on {human_tile_label(tile)}"
+            return _append_chi_meld_to_label(lead, meld)
+        if meld:
+            return _append_chi_meld_to_label("Skip the chi", meld)
         return "Skip the chi"
     if kind == "kan":
         if tile:
@@ -1555,6 +1619,50 @@ def _danger_compare_sentences(
     return out, nudge
 
 
+def _defense_led_for_discard(turn: TurnExplainInput) -> bool:
+    """True when discard template would lead with cut-only danger teaching."""
+    if (
+        is_call_decision_turn(turn)
+        or is_hora_decision_turn(turn)
+        or is_riichi_decision_turn(turn)
+    ):
+        return False
+
+    best = turn.mortal_best
+    player = turn.player_action
+    best_tile = _action_display(best)
+    best_raw = _action_tile_token_raw(best)
+    best_code = _danger_key(best_raw)
+    player_tile = _action_display(player)
+    player_code = _danger_key(_action_tile_token_raw(player))
+    alt = next_best_action(turn)
+
+    contrasted: str | None = None
+    if turn.diverge and player != best:
+        contrasted = player
+    elif alt and alt != best:
+        contrasted = alt
+
+    contrast_tile = player_tile
+    contrast_code = player_code
+    contrast_action = player
+    if contrasted and contrasted != player:
+        contrast_tile = _action_display(contrasted)
+        contrast_code = _danger_key(_action_tile_token_raw(contrasted))
+        contrast_action = contrasted
+
+    danger_bits, _ = _danger_compare_sentences(
+        turn,
+        best_tile=best_tile,
+        player_tile=contrast_tile,
+        best_code=best_code,
+        player_code=contrast_code,
+        player=contrast_action,
+        best=best,
+    )
+    return bool(danger_bits)
+
+
 def _template_explain_call(turn: TurnExplainInput) -> Explanation:
     """Skip / Call coach voice with open-vs-closed tradeoffs."""
     best = turn.mortal_best
@@ -1584,9 +1692,14 @@ def _template_explain_call(turn: TurnExplainInput) -> Explanation:
         call_side = tradeoff.call_action
 
     if best_kind == "none":
-        move_sents.append(_call_skip_lead(call_side))
+        move_sents.append(_call_skip_lead(call_side, turn))
     else:
         label = coach_action_label(best)
+        if parse_action_kind(best) == "chi":
+            chi_ref = call_side if call_side and is_call_action(call_side) else best
+            label = _append_chi_meld_to_label(
+                label, _chi_meld_detail(turn, chi_ref)
+            )
         if contrasted and parse_action_kind(contrasted) == "none":
             move_sents.append(f"{label}, don’t skip")
         else:
@@ -1625,12 +1738,12 @@ def _template_explain_call(turn: TurnExplainInput) -> Explanation:
                 f"You’re still aiming for {_glossed_goal('tanyao')} and holding terminals"
             )
         else:
-            goal_bit = _shape_goal_phrase(turn)
-            if goal_bit:
-                if goal_bit.startswith("fits"):
-                    state_sents.append(f"That {goal_bit}")
-                else:
-                    state_sents.append(_sentence_case(goal_bit))
+            move_subject = (
+                _gerund_move_subject(move_sents[0]) if move_sents else "Staying closed"
+            )
+            shape_sentence = _shape_goal_state_sentence(turn, move_subject)
+            if shape_sentence:
+                state_sents.append(shape_sentence)
         note_kind, note = _wall_note_detail(turn)
         if note_kind == "thin" and note:
             state_sents.append(_sentence_case(note))
@@ -1667,12 +1780,12 @@ def _template_explain_call(turn: TurnExplainInput) -> Explanation:
         if dropped_closed and tradeoff is not None and tradeoff.opens_hand:
             if not any("open" in s.lower() for s in state_sents):
                 state_sents.append("That opens the hand—no riichi")
-        goal_bit = _shape_goal_phrase(turn)
-        if goal_bit:
-            if goal_bit.startswith("fits"):
-                state_sents.append(f"That {goal_bit}")
-            else:
-                state_sents.append(_sentence_case(goal_bit))
+        move_subject = (
+            _gerund_move_subject(move_sents[0]) if move_sents else "Calling"
+        )
+        shape_sentence = _shape_goal_state_sentence(turn, move_subject)
+        if shape_sentence:
+            state_sents.append(shape_sentence)
 
     furiten_bit = _furiten_because_sentence(turn)
     if furiten_bit:
@@ -1681,7 +1794,11 @@ def _template_explain_call(turn: TurnExplainInput) -> Explanation:
 
     focus = _append_score_situation(state_sents, focus, turn)
 
-    summary = _join_summary_paragraphs(move_sents, state_sents)
+    summary = _join_summary_paragraphs(
+        move_sents,
+        state_sents,
+        second_between=_state_sentence_join(state_sents),
+    )
     return _finalize_explanation(
         turn,
         Explanation(
@@ -1761,7 +1878,11 @@ def _template_explain_riichi(turn: TurnExplainInput) -> Explanation:
 
     focus = _append_score_situation(state_sents, focus, turn)
 
-    summary = _join_summary_paragraphs(move_sents, state_sents)
+    summary = _join_summary_paragraphs(
+        move_sents,
+        state_sents,
+        second_between=_state_sentence_join(state_sents),
+    )
     return _finalize_explanation(
         turn,
         Explanation(
@@ -1812,7 +1933,11 @@ def _template_explain_hora(turn: TurnExplainInput) -> Explanation:
 
     focus = _append_score_situation(state_sents, focus, turn)
 
-    summary = _join_summary_paragraphs(move_sents, state_sents)
+    summary = _join_summary_paragraphs(
+        move_sents,
+        state_sents,
+        second_between=_state_sentence_join(state_sents),
+    )
     return _finalize_explanation(
         turn,
         Explanation(
@@ -1876,27 +2001,6 @@ def _template_explain_body(turn: TurnExplainInput) -> Explanation:
     else:
         move_sents.append(f"Throw {best_tile}")
 
-    note_kind, note = _wall_note_detail(turn)
-
-    if wait_shape:
-        wait_label = _glossed_wait(wait_shape) or wait_shape
-        move_sents.append(f"That keeps a {wait_label} wait")
-        focus = "efficiency"
-
-    if note_kind == "contrast" and note:
-        move_sents.append(f"That leaves {note}")
-        named = _named_improving_tiles_sentence(turn)
-        if named:
-            move_sents.append(named)
-    elif note:
-        move_sents.append(_sentence_case(note))
-
-    thin_extra = _thin_wall_sentence(turn)
-    if thin_extra and not any(
-        "still unseen" in s.lower() or "already out" in s.lower() for s in move_sents
-    ):
-        move_sents.append(thin_extra)
-
     contrast_tile = player_tile
     contrast_code = player_code
     contrast_action = player
@@ -1916,7 +2020,49 @@ def _template_explain_body(turn: TurnExplainInput) -> Explanation:
     )
     defense_led = bool(danger_bits)
 
-    has_efficiency_lead = bool(wait_shape) or note_kind == "contrast"
+    shape_on_state = bool(_shape_goal_tail(turn)) and not defense_led
+    midhand_bit = _midhand_shape_clause(turn, best_raw, best_tile)
+    if midhand_bit and not defense_led:
+        move_sents.append(_sentence_case(midhand_bit))
+        midhand_bit = None
+    elif (
+        not defense_led
+        and not shape_on_state
+        and "tanyao" in turn.features.shape_goals
+        and best_raw
+        and _is_terminal_or_honor(best_raw)
+    ):
+        move_sents.append(_sentence_case(f"{best_tile} can’t stay in that hand"))
+
+    note_kind, note = _wall_note_detail(turn)
+
+    if wait_shape:
+        wait_label = _glossed_wait(wait_shape) or wait_shape
+        move_sents.append(f"That keeps a {wait_label} wait")
+        focus = "efficiency"
+
+    if note_kind in ("contrast", "narrow_contrast") and note:
+        move_sents.append(f"That leaves {note}")
+        if note_kind == "contrast":
+            move_sents.extend(_named_improving_tiles_sentences(turn))
+    elif note:
+        move_sents.append(_sentence_case(note))
+
+    if contrasted and note_kind not in ("contrast", "narrow_contrast"):
+        preview = _improving_tiles_preview_sentence(turn, move_sents=move_sents)
+        if preview:
+            move_sents.append(preview)
+
+    thin_extra = _thin_wall_sentence(turn)
+    if thin_extra and not any(
+        "still unseen" in s.lower() or "already out" in s.lower() for s in move_sents
+    ):
+        move_sents.append(thin_extra)
+
+    has_efficiency_lead = bool(wait_shape) or note_kind in (
+        "contrast",
+        "narrow_contrast",
+    )
     if shanten is not None:
         if has_efficiency_lead:
             state_sents.append(f"You’re {_glossed_shanten_phrase(shanten)}")
@@ -1927,33 +2073,16 @@ def _template_explain_body(turn: TurnExplainInput) -> Explanation:
                 f"{_glossed_acceptances_phrase(ukeire.count)}"
             )
 
-    goal_bit = _shape_goal_phrase(turn)
-    midhand_bit = _midhand_shape_clause(turn, best_raw, best_tile)
+    move_subject = f"Throwing {_label_without_emoji(best_tile)}"
+    shape_sentence = _shape_goal_state_sentence(
+        turn,
+        move_subject,
+        best_raw=best_raw,
+        contrasted_action=contrasted,
+    )
     # Defense-led tips: cut teaching only — Aiming for covers yaku; Hand stats
     # covers metrics. Shape goals stay when they *are* the reason (no danger).
-    if goal_bit and not defense_led:
-        if goal_bit.startswith("fits"):
-            shape_sentence = f"That {goal_bit}"
-        else:
-            shape_sentence = _sentence_case(goal_bit)
-        if midhand_bit and (
-            "floating" in midhand_bit or "dead-end" in midhand_bit
-        ):
-            # Dora-keep vs cut-reason are opposite polarities — don't dash-glue.
-            if not goal_bit.startswith("keeping"):
-                shape_sentence += f"—{midhand_bit}"
-                midhand_bit = None
-        elif (
-            "tanyao" in turn.features.shape_goals
-            and best_raw
-            and _is_terminal_or_honor(best_raw)
-        ):
-            shape_sentence += f"—{best_tile} can’t stay in that hand"
-        else:
-            alt_raw = _action_tile_token_raw(contrasted) if contrasted else None
-            yakuhai_bit = _yakuhai_because_clause(turn, best_raw, alt_raw)
-            if yakuhai_bit:
-                shape_sentence += yakuhai_bit
+    if shape_sentence and not defense_led:
         state_sents.append(shape_sentence)
         if turn.features.shape_goals or turn.features.statuses.dora_in_hand:
             if focus == "efficiency" and (
@@ -1961,18 +2090,11 @@ def _template_explain_body(turn: TurnExplainInput) -> Explanation:
                 or turn.features.statuses.dora_in_hand
             ):
                 focus = "value"
-    if midhand_bit and not defense_led:
-        if (
-            goal_bit
-            and goal_bit.startswith("keeping")
-            and state_sents
-            and ("floating" in midhand_bit or "dead-end" in midhand_bit)
-        ):
-            state_sents[-1] = (
-                f"{state_sents[-1]}\n{_sentence_case(midhand_bit)}"
-            )
-        else:
-            state_sents.append(_sentence_case(midhand_bit))
+
+    if contrasted and not defense_led:
+        alt_shape_bit = _alternate_midhand_shape_clause(turn, contrasted)
+        if alt_shape_bit:
+            state_sents.append(_sentence_case(alt_shape_bit))
 
     furiten_bit = _furiten_because_sentence(turn)
     if furiten_bit:
@@ -1989,7 +2111,15 @@ def _template_explain_body(turn: TurnExplainInput) -> Explanation:
 
     focus = _append_score_situation(state_sents, focus, turn)
 
-    summary = _join_summary_paragraphs(move_sents, state_sents)
+    move_join = (
+        ".\n" if note_kind in ("contrast", "narrow_contrast") else ". "
+    )
+    summary = _join_summary_paragraphs(
+        move_sents,
+        state_sents,
+        first_between=move_join,
+        second_between=_state_sentence_join(state_sents),
+    )
     return _finalize_explanation(
         turn,
         Explanation(
@@ -1999,661 +2129,6 @@ def _template_explain_body(turn: TurnExplainInput) -> Explanation:
             contrasted_action=contrasted,
         ),
     )
-
-
-def _contrast_alt_action(turn: TurnExplainInput) -> str | None:
-    """Action whose ukeire_alt / danger contrast the tip compares against."""
-    if turn.diverge and turn.player_action != turn.mortal_best:
-        return turn.player_action
-    return next_best_action(turn)
-
-
-def _genbutsu_tile_codes(turn: TurnExplainInput) -> set[str]:
-    return {
-        deaka(normalize_tile(t))
-        for t, tag in turn.features.danger.items()
-        if tag == "genbutsu"
-    }
-
-
-def _mentionable_tile_codes(turn: TurnExplainInput) -> list[str]:
-    """Tiles likely named in discard tips (hand + candidates + danger keys)."""
-    codes: set[str] = set()
-    for tile in turn.game_state.hand:
-        try:
-            codes.add(deaka(normalize_tile(tile)))
-        except ValueError:
-            continue
-    for action in (
-        turn.mortal_best,
-        turn.player_action,
-        next_best_action(turn),
-        *(c.action for c in turn.mortal_output.candidates[:8]),
-    ):
-        raw = _action_tile_token_raw(action) if action else None
-        if raw:
-            try:
-                codes.add(deaka(normalize_tile(raw)))
-            except ValueError:
-                continue
-    for tile in turn.features.danger:
-        try:
-            codes.add(deaka(normalize_tile(tile)))
-        except ValueError:
-            continue
-    return sorted(codes)
-
-
-def _tile_claim_label_pattern(tile: str) -> str:
-    """Regex fragment matching human / code forms of a tile in lowered prose."""
-    tile = deaka(normalize_tile(tile)).lower()
-    if tile in _HONOR_ALIASES:
-        # Word-bound each alias so bare "n" does not match inside "chun".
-        names = "|".join(
-            rf"(?:\b{re.escape(a)}\b)" for a in (tile, *_HONOR_ALIASES[tile])
-        )
-        return rf"(?:{names})"
-    m = re.fullmatch(r"([1-9])([mps])", tile)
-    if not m:
-        return re.escape(tile)
-    num, suit = m.group(1), m.group(2)
-    suit_name = {"m": "man", "p": "pin", "s": "sou"}[suit]
-    return (
-        rf"(?:{re.escape(tile)}|{num}-{suit_name}|{num}\s*{suit_name}|"
-        rf"{num}{suit_name})"
-    )
-
-
-def _tile_claimed_as_genbutsu_safe(summary_l: str, tile: str) -> bool:
-    """True when prose attributes genbutsu / already-discarded safety to tile."""
-    label = _tile_claim_label_pattern(tile)
-    if re.search(
-        rf"{label}\s+is\s+(?:also\s+)?genbutsu\b",
-        summary_l,
-    ):
-        return True
-    if re.search(
-        rf"{label}\s+is\s+(?:also\s+)?(?:a\s+)?"
-        rf"safer\b[^.]*\balready\s+(?:been\s+)?(?:played|discarded)\b",
-        summary_l,
-    ):
-        return True
-    if re.search(
-        rf"{label}\s+is\s+[^.]*\balready\s+(?:been\s+)?(?:played|discarded)\b",
-        summary_l,
-    ) and not re.search(r"\bfuriten\b", summary_l):
-        # Template: "2-man is genbutsu (safe — already discarded)"
-        if re.search(
-            rf"{label}\s+is\s+[^.]*\b(?:genbutsu|safe)\b",
-            summary_l,
-        ):
-            return True
-    # Teaching voice: "already discarded East" / "can't ron East"
-    # (exclude furiten: "you already discarded 7-sou, so you can't win on…")
-    if not re.search(r"\bfuriten\b", summary_l):
-        if re.search(
-            rf"\balready\s+(?:been\s+)?(?:played|discarded)\s+{label}\b",
-            summary_l,
-        ):
-            return True
-        if re.search(
-            rf"\bcan'?t\s+(?:ron|win on)\s+{label}\b",
-            summary_l,
-        ):
-            return True
-    elif re.search(rf"\bcan'?t\s+ron\s+{label}\b", summary_l):
-        return True
-    if re.search(
-        rf"if you throw\s+{label}\b[^.]{{0,60}}?"
-        rf"(?:\bsafer\b|\bgenbutsu\b|\balready\s+(?:been\s+)?(?:played|discarded)\b"
-        rf"|\bcan'?t\s+ron\b)",
-        summary_l,
-    ):
-        return True
-    return False
-
-
-def _false_genbutsu_error(turn: TurnExplainInput, summary_l: str) -> str | None:
-    """Reject genbutsu / already-played safety attached to the wrong tile."""
-    gen = _genbutsu_tile_codes(turn)
-    has_genbutsu_word = bool(re.search(r"\bgenbutsu\b", summary_l))
-    has_safer_already = bool(
-        re.search(
-            r"\bsafer\b[^.]*\balready\s+(?:been\s+)?(?:played|discarded)\b",
-            summary_l,
-        )
-    )
-    has_already_played = bool(
-        re.search(r"\balready\s+been\s+played\b", summary_l)
-    )
-    # Furiten tips also say "already discarded" / "can't win on" — ignore those.
-    has_furiten = bool(re.search(r"\bfuriten\b", summary_l))
-    has_already_discarded = bool(
-        re.search(r"\balready\s+discarded\b", summary_l)
-    ) and not has_furiten
-    has_cant_ron = bool(re.search(r"\bcan'?t\s+ron\b", summary_l))
-    has_cant_win_on = bool(
-        re.search(r"\bcan'?t\s+win on\b", summary_l)
-    ) and not has_furiten
-    claims_genbutsu_safety = (
-        has_genbutsu_word
-        or has_safer_already
-        or has_already_played
-        or has_already_discarded
-        or has_cant_ron
-        or has_cant_win_on
-    )
-    if not claims_genbutsu_safety:
-        return None
-
-    for tile in _mentionable_tile_codes(turn):
-        if tile in gen:
-            continue
-        if _tile_claimed_as_genbutsu_safe(summary_l, tile):
-            return f"summary attributes genbutsu/already-discarded safety to {tile!r}"
-
-    if has_genbutsu_word and gen:
-        if not any(_mentions_tile(summary_l, t) for t in gen):
-            return "summary mentions genbutsu without naming a genbutsu tile"
-    needs_named_gen = (
-        has_safer_already
-        or has_already_played
-        or has_already_discarded
-        or has_cant_ron
-        or has_cant_win_on
-    )
-    if needs_named_gen and not gen:
-        return "summary claims already-discarded safety with no genbutsu tag"
-    if needs_named_gen and gen:
-        if not any(_mentions_tile(summary_l, t) for t in gen):
-            return (
-                "summary claims already-discarded safety "
-                "without naming a genbutsu tile"
-            )
-    return None
-
-
-# Count unit: "improving tiles" or prompt voice "tiles that can improve…"
-_UKEIRE_COUNT_UNIT = (
-    r"(?:improving tiles?(?:\s+available)?|"
-    r"tiles that can improve(?:\s+(?:your\s+)?hand)?|"
-    r"tiles that can help(?:\s+you)?)"
-)
-
-_UKEIRE_CONTRAST_PAIR_RE = re.compile(
-    rf"(?P<best>\d+)\s+{_UKEIRE_COUNT_UNIT}"
-    r".{0,120}?"
-    r"(?:vs(?:\s+about)?|compared to(?:\s+only)?)\s+"
-    rf"(?:about\s+)?(?P<alt>\d+)"
-    rf"(?:\s+{_UKEIRE_COUNT_UNIT})?"
-    r".{0,60}?"
-    r"(?:if you throw|while throwing)\s+(?P<label>[^.]+?)(?:\.|,|$)",
-    re.IGNORECASE | re.DOTALL,
-)
-
-# "31 tiles that can improve…, while throwing 9-sou … only 36 improving tiles"
-_UKEIRE_WHILE_THROWING_RE = re.compile(
-    rf"(?P<best>\d+)\s+{_UKEIRE_COUNT_UNIT}"
-    r".{0,120}?"
-    r"while\s+throwing\s+(?P<label>[^.]+?)"
-    r".{0,80}?"
-    rf"(?:only\s+)?(?:about\s+)?(?P<alt>\d+)\s+{_UKEIRE_COUNT_UNIT}",
-    re.IGNORECASE | re.DOTALL,
-)
-
-# "37 … while 2-pin leaves you with only about 35"
-_UKEIRE_WHILE_LEAVES_RE = re.compile(
-    rf"(?P<best>\d+)\s+{_UKEIRE_COUNT_UNIT}"
-    r".{0,120}?"
-    r"while\s+(?P<label>[^.]+?)\s+leaves\s+you\s+with\s+"
-    rf"(?:only\s+)?(?:about\s+)?(?P<alt>\d+)",
-    re.IGNORECASE | re.DOTALL,
-)
-
-# Adjacent claim only — avoid matching best-count … vs about N if you throw
-_UKEIRE_ALT_ONLY_RE = re.compile(
-    rf"(?:compared to(?:\s+only)?|only)\s+"
-    rf"(?:about\s+)?(?P<alt>\d+)\s+{_UKEIRE_COUNT_UNIT}\s+"
-    r"(?:if you throw|while throwing)\s+(?P<label>[^.]+?)(?:\.|,|$)",
-    re.IGNORECASE | re.DOTALL,
-)
-
-
-def _ukeire_contrast_match(
-    summary_l: str,
-) -> tuple[re.Match[str], int | None, int, str] | None:
-    """Return (match, best_n|None, alt_n, label) for an improving-tile contrast."""
-    pair = _UKEIRE_CONTRAST_PAIR_RE.search(summary_l)
-    if pair:
-        return pair, int(pair.group("best")), int(pair.group("alt")), pair.group("label")
-    while_throw = _UKEIRE_WHILE_THROWING_RE.search(summary_l)
-    if while_throw:
-        return (
-            while_throw,
-            int(while_throw.group("best")),
-            int(while_throw.group("alt")),
-            while_throw.group("label"),
-        )
-    while_leaves = _UKEIRE_WHILE_LEAVES_RE.search(summary_l)
-    if while_leaves:
-        return (
-            while_leaves,
-            int(while_leaves.group("best")),
-            int(while_leaves.group("alt")),
-            while_leaves.group("label"),
-        )
-    alt_only = _UKEIRE_ALT_ONLY_RE.search(summary_l)
-    if alt_only:
-        return alt_only, None, int(alt_only.group("alt")), alt_only.group("label")
-    return None
-
-
-def _ukeire_only_on_larger_error(
-    summary_l: str, best_n: int, alt_n: int
-) -> str | None:
-    """Reject 'only N' when N is the larger of the two cited contrast counts."""
-    smaller = min(best_n, alt_n)
-    for m in re.finditer(r"\bonly\s+(?:about\s+)?(\d+)\b", summary_l):
-        n = int(m.group(1))
-        if n in (best_n, alt_n) and n != smaller:
-            return "summary uses 'only' on the larger improving-tile count"
-    return None
-
-
-def _false_ukeire_contrast_error(
-    turn: TurnExplainInput, summary_l: str
-) -> str | None:
-    """Reject invented improving-tile vs / if-you-throw contrasts."""
-    note_kind, _note = _wall_note_detail(turn)
-    alt_info = turn.features.ukeire_alt
-    alt_action = _contrast_alt_action(turn)
-    alt_raw = _action_tile_token_raw(alt_action) if alt_action else None
-    alt_code = _danger_key(alt_raw) if alt_raw else None
-
-    parsed = _ukeire_contrast_match(summary_l)
-    if not parsed:
-        return None
-    match, best_n, alt_n, label = parsed
-
-    if note_kind != "contrast" or alt_info is None or alt_code is None:
-        return "summary invents improving-tile contrast without wall_note contrast"
-
-    if best_n is not None and best_n != turn.features.ukeire.count:
-        return "summary improving-tile contrast counts do not match ukeire"
-    if alt_n != alt_info.count:
-        return "summary improving-tile contrast counts do not match ukeire"
-    if best_n is not None:
-        only_err = _ukeire_only_on_larger_error(summary_l, best_n, alt_n)
-        if only_err:
-            return only_err
-
-    label = label.strip().lower()
-    # Trim trailing relative clauses ("1-sou, which is…") / "would leave…"
-    label = re.split(
-        r"\s*,\s*|\s+which\b|\s+would\b|\s+leaves\b", label, maxsplit=1
-    )[0].strip()
-    if not _mentions_tile(label, alt_code) and not _mentions_tile(
-        summary_l[match.start() : match.end()], alt_code
-    ):
-        return "summary improving-tile contrast names the wrong alternate cut"
-    return None
-
-
-_HONOR_NAME_TO_CODE: dict[str, str] = {
-    "east": "E",
-    "south": "S",
-    "west": "W",
-    "north": "N",
-    "haku": "P",
-    "white": "P",
-    "hatsu": "F",
-    "green": "F",
-    "chun": "C",
-}
-
-_PAIR_OF_HONOR_RE = re.compile(
-    r"\b(?:holding\s+)?(?:a\s+)?pair\s+of\s+"
-    r"(?:[^\w\s]\s*)?"  # optional tile emoji before the name
-    r"(?P<label>east|south|west|north|haku|hatsu|chun|white|green)\b",
-    re.IGNORECASE,
-)
-
-
-def _yakuhai_pair_codes(
-    hand: list[str], context: dict[str, Any] | None
-) -> set[str]:
-    """Yakuhai-capable honor codes held as a pair or triplet."""
-    value = _yakuhai_value_tiles(context)
-    counts = _hand_tile_counts(hand)
-    return {
-        tile
-        for tile in _HONOR_ORDER
-        if tile in value and counts.get(tile, 0) >= 2
-    }
-
-
-def _false_yakuhai_pair_error(
-    turn: TurnExplainInput, summary_l: str
-) -> str | None:
-    """Reject 'pair of X' when X is not actually held as a yakuhai pair."""
-    allowed = _yakuhai_pair_codes(
-        turn.game_state.hand, turn.features.context
-    )
-    for m in _PAIR_OF_HONOR_RE.finditer(summary_l):
-        code = _HONOR_NAME_TO_CODE.get(m.group("label").lower())
-        if code is None:
-            continue
-        if code not in allowed:
-            return f"summary claims pair of {code!r} not in yakuhai_pairs"
-
-    # Template voice: "while Chun is already a pair"
-    for tile in _HONOR_ORDER:
-        label = _tile_claim_label_pattern(tile)
-        if re.search(rf"{label}\s+is\s+already\s+a\s+pair\b", summary_l):
-            if tile not in allowed:
-                return f"summary claims pair of {tile!r} not in yakuhai_pairs"
-    return None
-
-
-# Cut-note kinds → prose patterns that attribute the note to a named tile.
-_CUT_NOTE_TILE_CLAIM_PATTERNS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("dead_end", (r"dead[-\s]?end",)),
-    ("floating_honor", (r"floating\s+honor",)),
-    ("floating_terminal", (r"floating\s+terminal",)),
-    (
-        "isolated_kanchan",
-        (
-            r"isolated\s+kanchan",
-            r"closed\s+middle(?:\s*\([^)]*\))?",
-        ),
-    ),
-    (
-        "isolated_penchan",
-        (
-            r"isolated\s+penchan",
-            r"(?:an?\s+)?edge(?:\s*\([^)]*\))?\s+shape",
-        ),
-    ),
-)
-
-
-def _tile_claimed_as_cut_note(
-    summary_l: str, tile: str, kind_patterns: tuple[str, ...]
-) -> bool:
-    """True when prose attributes a cut-note kind to this tile."""
-    label = _tile_claim_label_pattern(tile)
-    kind_alt = "|".join(f"(?:{p})" for p in kind_patterns)
-    if re.search(
-        rf"{label}\s+is\s+(?:a\s+|an\s+)?(?:{kind_alt})\b",
-        summary_l,
-    ):
-        return True
-    if re.search(
-        rf"{label}\s+clears\s+(?:a\s+|an\s+)?(?:{kind_alt})\b",
-        summary_l,
-    ):
-        return True
-    if re.search(
-        rf"while\s+{label}\s+is\s+(?:a\s+|an\s+)?(?:{kind_alt})\b",
-        summary_l,
-    ):
-        return True
-    return False
-
-
-def _false_cut_note_tile_error(
-    turn: TurnExplainInput, summary_l: str
-) -> str | None:
-    """Reject cut-note nouns attached to a tile that lacks that note."""
-    notes_by_kind: dict[str, set[str]] = {}
-    for note in turn.features.hand_shape_notes:
-        try:
-            code = deaka(normalize_tile(note.tile))
-        except ValueError:
-            continue
-        notes_by_kind.setdefault(note.kind, set()).add(code)
-
-    # Skip if summary has no cut-note vocabulary at all.
-    if not re.search(
-        r"\b(?:dead[-\s]?end|floating\s+honor|floating\s+terminal|"
-        r"isolated\s+kanchan|isolated\s+penchan|closed\s+middle|"
-        r"edge\s*\([^)]*\)\s+shape|edge\s+shape)\b",
-        summary_l,
-    ):
-        return None
-
-    for tile in _mentionable_tile_codes(turn):
-        for kind, patterns in _CUT_NOTE_TILE_CLAIM_PATTERNS:
-            if not _tile_claimed_as_cut_note(summary_l, tile, patterns):
-                continue
-            allowed = notes_by_kind.get(kind, set())
-            if tile not in allowed:
-                return f"summary attributes {kind} to {tile!r}"
-    return None
-
-
-def _pinned_discard_keep_error(
-    turn: TurnExplainInput, summary_l: str
-) -> str | None:
-    """Reject Throw X tips that also advise keeping the pinned cut."""
-    if parse_action_kind(turn.mortal_best) != "dahai":
-        return None
-    pin = _action_tile_token(turn.mortal_best)
-    if not pin:
-        return None
-
-    if _PINNED_CUT_KEEP_IT_PATTERN.search(summary_l):
-        return "pinned_cut_keep_contradiction"
-
-    label = _tile_claim_label_pattern(pin)
-    if re.search(
-        rf"\b(?:keep(?:s|ing)?|preserve(?:s|ing)?|hold(?:s|ing)?\s+onto)\s+"
-        rf"{label}\b",
-        summary_l,
-    ):
-        return "pinned_cut_keep_contradiction"
-    return None
-
-
-def _negated_before(summary_l: str, start: int) -> bool:
-    """True when match at start is preceded by don't / do not / not."""
-    prefix = summary_l[max(0, start - 24) : start]
-    return bool(re.search(r"(?:don['\u2019]t|do\s+not|not)\s+$", prefix))
-
-
-def _action_lead_polarity_error(
-    turn: TurnExplainInput, summary_l: str
-) -> str | None:
-    """Reject Skip/Call or Declare/Stay-silent leads that flip advice mid-tip."""
-    if is_call_decision_turn(turn):
-        kind = parse_action_kind(turn.mortal_best)
-        if kind == "none":
-            if re.search(
-                r"\b(?:better to call|should call|take the (?:pon|chi|kan))\b",
-                summary_l,
-            ):
-                return "action_lead_polarity_inverted"
-        elif kind in ("pon", "chi", "kan"):
-            if re.search(
-                r"\b(?:better to skip|should skip|stay closed instead)\b",
-                summary_l,
-            ):
-                return "action_lead_polarity_inverted"
-        return None
-
-    if is_riichi_decision_turn(turn):
-        kind = parse_action_kind(turn.mortal_best)
-        if kind == "reach":
-            for m in re.finditer(r"\bstay silent\b", summary_l):
-                if not _negated_before(summary_l, m.start()):
-                    return "action_lead_polarity_inverted"
-            if re.search(r"\bbetter not to (?:riichi|reach)\b", summary_l):
-                return "action_lead_polarity_inverted"
-        elif kind == "none":
-            for m in re.finditer(r"\bdeclare riichi\b", summary_l):
-                if not _negated_before(summary_l, m.start()):
-                    return "action_lead_polarity_inverted"
-        return None
-
-    return None
-
-
-_WALL_JARGON_RE = re.compile(
-    r"\b(?:thinning wall|thin wall|improving tiles are thinning|left in the wall)\b",
-    re.IGNORECASE,
-)
-
-
-def _wall_jargon_error(summary_l: str) -> str | None:
-    """Reject ambiguous draw-pile / thinning jargon for unseen-copy facts."""
-    if _WALL_JARGON_RE.search(summary_l):
-        return "summary uses ambiguous wall/thinning jargon"
-    if re.search(r"\bthinning\b", summary_l) and not (
-        re.search(r"\bstill unseen\b", summary_l)
-        or re.search(r"\balready out\b", summary_l)
-    ):
-        return "summary uses ambiguous wall/thinning jargon"
-    return None
-
-
-def validate_explanation(turn: TurnExplainInput, explanation: Explanation) -> list[str]:
-    """Return list of grounding violations (empty = ok)."""
-    errors: list[str] = []
-    if explanation.pinned_action != turn.mortal_best:
-        errors.append(
-            f"pinned_action {explanation.pinned_action!r} != mortal_best {turn.mortal_best!r}"
-        )
-
-    pin_token = _action_tile_token(turn.mortal_best)
-    summary_l = explanation.summary.lower()
-    if pin_token and turn.mortal_best.lower() not in summary_l:
-        # Allow readable forms like "5-sou" / "Hatsu" / emoji labels
-        if not _mentions_tile(summary_l, pin_token):
-            errors.append(
-                f"summary does not mention pinned action/tile {turn.mortal_best!r}"
-            )
-
-    reach_discard = turn.features.context.get("reach_discard")
-    if (
-        is_riichi_decision_turn(turn)
-        and is_riichi_decision_action(turn.mortal_best)
-        and reach_discard
-        and not _mentions_tile(summary_l, str(reach_discard))
-    ):
-        errors.append(
-            f"summary does not mention reach discard tile {reach_discard!r}"
-        )
-
-    # Reject recommending a different dahai tile than mortal_best
-    other = _action_tile_token(turn.player_action)
-    if (
-        other
-        and other != pin_token
-        and re.search(rf"\b(?:discard|throw|cut)\s+{re.escape(other)}\b", summary_l)
-        and not re.search(
-            rf"\b(?:instead of|rather than|over|not)\s+{re.escape(other)}\b",
-            summary_l,
-        )
-        and not re.search(rf"\bif you throw\s+{re.escape(other)}\b", summary_l)
-    ):
-        errors.append("summary appears to recommend the player's tile over Mortal")
-
-    if len(explanation.summary.split()) > SUMMARY_WORD_LIMIT:
-        errors.append("summary exceeds length budget")
-
-    allowed_yaku = set(coaching_shape_goals(turn))
-    if turn.features.statuses.dora_in_hand:
-        allowed_yaku.add("dora")
-    for tag, patterns in _YAKU_MENTION_PATTERNS:
-        if tag in allowed_yaku:
-            continue
-        for pat in patterns:
-            if re.search(pat, summary_l):
-                errors.append(f"summary mentions yaku {tag!r} not in shape_goals")
-                break
-
-    kind_err = _call_kind_mismatch_error(turn, summary_l)
-    if kind_err:
-        errors.append(kind_err)
-
-    if _CUT_NOTE_POLARITY_PATTERN.search(summary_l):
-        errors.append("cut_note_polarity_inverted")
-
-    if _FIGURATIVE_HAND_OPEN_PATTERN.search(summary_l):
-        errors.append("figurative_hand_open")
-
-    keep_err = _pinned_discard_keep_error(turn, summary_l)
-    if keep_err:
-        errors.append(keep_err)
-
-    lead_err = _action_lead_polarity_error(turn, summary_l)
-    if lead_err:
-        errors.append(lead_err)
-
-    shape_on_err = _isolated_shape_on_cut_error(turn, summary_l)
-    if shape_on_err:
-        errors.append(shape_on_err)
-
-    cut_tile_err = _false_cut_note_tile_error(turn, summary_l)
-    if cut_tile_err:
-        errors.append(cut_tile_err)
-
-    yakuhai_pair_err = _false_yakuhai_pair_error(turn, summary_l)
-    if yakuhai_pair_err:
-        errors.append(yakuhai_pair_err)
-
-    gen_err = _false_genbutsu_error(turn, summary_l)
-    if gen_err:
-        errors.append(gen_err)
-
-    ukeire_err = _false_ukeire_contrast_error(turn, summary_l)
-    if ukeire_err:
-        errors.append(ukeire_err)
-
-    wall_jargon_err = _wall_jargon_error(summary_l)
-    if wall_jargon_err:
-        errors.append(wall_jargon_err)
-
-    substance = score_explanation_substance(turn, explanation.summary)
-    if substance.thin:
-        errors.append("thin_efficiency_claim")
-
-    return errors
-
-
-def _isolated_shape_on_cut_error(
-    turn: TurnExplainInput, summary_l: str
-) -> str | None:
-    """Reject 'kanchan/penchan/fragment on {cut}' — sounds like a wait tile."""
-    for note in turn.features.hand_shape_notes:
-        if note.kind not in ("isolated_kanchan", "isolated_penchan"):
-            continue
-        label = _tile_claim_label_pattern(note.tile)
-        if re.search(
-            rf"\b(?:(?:isolated\s+)?(?:kanchan|penchan)|fragment)\b"
-            rf"(?:\s*\([^)]*\))?"
-            rf"\s+on\s+{label}\b",
-            summary_l,
-        ):
-            return "isolated_shape_on_cut_phrasing"
-    return None
-
-
-def _call_kind_mismatch_error(turn: TurnExplainInput, summary_l: str) -> str | None:
-    """Reject summaries that recommend the wrong call family vs mortal_best."""
-    kind = parse_action_kind(turn.mortal_best)
-    if kind == "chi" and re.search(r"\bpon\b", summary_l):
-        return "summary call kind pon mismatches mortal_best chi"
-    if kind == "pon" and re.search(
-        r"(?:^|[.!?]\s*)chi\b|\bchi\s+\d", summary_l
-    ):
-        return "summary call kind chi mismatches mortal_best pon"
-    if kind == "kan" and (
-        re.search(r"\bcall\s+pon\b", summary_l)
-        or re.search(r"(?:^|[.!?]\s*)chi\b", summary_l)
-    ):
-        return "summary call kind mismatches mortal_best kan"
-    return None
 
 
 def explain(
@@ -2673,8 +2148,10 @@ def explain(
     known = _known_terms_from_turn(turn)
     with using_known_terms(known):
         if use_llm is None:
-            use_llm = bool(
-                os.environ.get("OPENAI_API_KEY") or os.environ.get("SENSEI_API_KEY")
+            use_llm = os.environ.get("SENSEI_USE_LLM", "").lower() in (
+                "1",
+                "true",
+                "yes",
             )
 
         if use_llm:
@@ -2803,45 +2280,3 @@ def explanation_from_llm_data(turn: TurnExplainInput, data: dict[str, Any]) -> E
         ),
     )
 
-
-def _action_tile_token(action: str) -> str | None:
-    tile = action_tile_arg(action)
-    return tile.lower() if tile else None
-
-
-_HONOR_ALIASES: dict[str, tuple[str, ...]] = {
-    "e": ("east",),
-    "s": ("south",),
-    "w": ("west",),
-    "n": ("north",),
-    "p": ("haku",),
-    "f": ("hatsu",),
-    "c": ("chun",),
-}
-
-
-def _mentions_tile(text: str, tile: str) -> bool:
-    """Match mjai codes, suit names (5-sou), honor names (Hatsu), and emoji labels."""
-    tile = tile.lower()
-    label = human_tile_label(tile).lower()
-    if label and label in text:
-        return True
-    if tile in _HONOR_ALIASES:
-        if re.search(rf"\b{re.escape(tile)}\b", text):
-            return True
-        return any(alias in text for alias in _HONOR_ALIASES[tile])
-    if tile in text:
-        return True
-    if re.fullmatch(r"5[mps]r", tile) and "red" in text and _mentions_tile(text, tile[:2]):
-        return True
-    m = re.fullmatch(r"([1-9])([mps])", tile)
-    if not m:
-        return False
-    num, suit = m.group(1), m.group(2)
-    suit_name = {"m": "man", "p": "pin", "s": "sou"}[suit]
-    patterns = [
-        rf"{num}-{suit_name}",
-        rf"{num}\s*{suit_name}",
-        rf"{num}{suit_name}",
-    ]
-    return any(re.search(p, text) for p in patterns)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -13,7 +14,7 @@ from urllib.parse import parse_qs, urlparse
 from shanten_sensei.explain import (
     _furiten_blocking_tiles,
     coaching_shape_goals,
-    explain_llm,
+    explain,
     template_explain,
     validate_explanation,
 )
@@ -64,18 +65,28 @@ def _parse_score_tips(qs: dict[str, list[str]], body: dict[str, Any] | None = No
 
 
 def resolve_web_dir() -> Path:
-    """Locate web/ for editable installs and cwd-relative runs."""
+    """Locate web/ for pip installs, editable installs, and cwd-relative runs."""
     here = Path(__file__).resolve()
     candidates = [
-        here.parents[2] / "web",  # repo root: src/shanten_sensei/serve.py
-        here.parent / "web",
+        here.parent / "web",  # wheel: shanten_sensei/web
+        here.parents[2] / "web",  # editable: repo root
         Path.cwd() / "web",
     ]
     for path in candidates:
         if (path / "review.html").is_file():
             return path
+    try:
+        from importlib.resources import as_file, files
+
+        ref = files("shanten_sensei").joinpath("web")
+        with as_file(ref) as pkg_web:
+            pkg_path = Path(pkg_web)
+            if (pkg_path / "review.html").is_file():
+                return pkg_path
+    except (ImportError, TypeError, FileNotFoundError, ModuleNotFoundError):
+        pass
     raise FileNotFoundError(
-        "web/review.html not found; expected next to the repo root or under cwd"
+        "web/review.html not found; reinstall shanten-sensei or run from the repo"
     )
 
 
@@ -93,7 +104,7 @@ class ReviewSession:
         self.log_id = log_id
         self._by_index = {d.index: d for d in diverges}
         self._cache: dict[tuple[Any, ...], dict[str, Any]] = {}
-        self._explain_fn = explain_fn or explain_llm
+        self._explain_fn = explain_fn
         self._explain_calls = 0
 
     @classmethod
@@ -133,7 +144,7 @@ class ReviewSession:
         self,
         index: int,
         *,
-        mode: ExplainSource = "llm",
+        mode: ExplainSource = "template",
         known_terms: list[str] | None = None,
         include_score_tips: bool = False,
     ) -> dict[str, Any]:
@@ -146,6 +157,7 @@ class ReviewSession:
         diverge = self._by_index.get(index)
         if diverge is None:
             raise KeyError(index)
+        errors: list[str] = []
         if mode == "template":
             explanation = template_explain(
                 diverge.turn,
@@ -153,24 +165,48 @@ class ReviewSession:
                 include_score_tips=score_tips,
             )
             source: ExplainSource = "template"
+            errors = validate_explanation(diverge.turn, explanation)
         else:
             self._explain_calls += 1
-            # Prefer kwargs when the injected explain_fn supports them.
-            try:
-                explanation = self._explain_fn(  # type: ignore[call-arg]
-                    diverge.turn,
-                    known_terms=known,
-                    include_score_tips=score_tips,
-                )
-            except TypeError:
+            if self._explain_fn is not None:
                 try:
-                    explanation = self._explain_fn(  # type: ignore[call-arg]
-                        diverge.turn, known_terms=known
+                    llm_explanation = self._explain_fn(  # type: ignore[call-arg]
+                        diverge.turn,
+                        known_terms=known,
+                        include_score_tips=score_tips,
                     )
                 except TypeError:
-                    explanation = self._explain_fn(diverge.turn)
+                    try:
+                        llm_explanation = self._explain_fn(  # type: ignore[call-arg]
+                            diverge.turn, known_terms=known
+                        )
+                    except TypeError:
+                        llm_explanation = self._explain_fn(diverge.turn)
+                errors = validate_explanation(diverge.turn, llm_explanation)
+                if errors:
+                    explanation = template_explain(
+                        diverge.turn,
+                        known_terms=known,
+                        include_score_tips=score_tips,
+                    )
+                else:
+                    explanation = llm_explanation
+            else:
+                if not (
+                    os.environ.get("SENSEI_API_KEY")
+                    or os.environ.get("OPENAI_API_KEY")
+                ):
+                    raise ValueError(
+                        "missing API key: set OPENAI_API_KEY or SENSEI_API_KEY"
+                    )
+                explanation = explain(
+                    diverge.turn,
+                    use_llm=True,
+                    known_terms=list(known),
+                    include_score_tips=score_tips,
+                )
+                errors = validate_explanation(diverge.turn, explanation)
             source = "llm"
-        errors = validate_explanation(diverge.turn, explanation)
         payload = {
             "index": index,
             "source": source,
@@ -270,7 +306,7 @@ def make_handler(
                 return
             index = int(match.group(1))
             qs = parse_qs(parsed.query)
-            mode_raw = (qs.get("mode") or ["llm"])[0].strip().lower()
+            mode_raw = (qs.get("mode") or ["template"])[0].strip().lower()
             if mode_raw not in ("llm", "template"):
                 self._json(400, {"error": "mode must be 'llm' or 'template'"})
                 return

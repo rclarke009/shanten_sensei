@@ -262,6 +262,52 @@ def enrich_call_action_label(
     return f"daiminkan {tile}"
 
 
+def _tile_rank_suit(tile: str) -> tuple[int, str] | None:
+    """Return (rank 1-9, suit m/p/s) for suited tiles; None for honors."""
+    t = normalize_tile(tile)
+    if t in ("5mr", "5pr", "5sr"):
+        return 5, t[1]
+    if len(t) >= 2 and t[0].isdigit() and t[1] in _SUIT_NAMES:
+        return int(t[0]), t[1]
+    return None
+
+
+def enumerate_chi_melds(hand: list[str], call_tile: str) -> list[tuple[str, str, str]]:
+    """All valid chi sequences (low, mid, high) for a discard and closed hand."""
+    parsed = _tile_rank_suit(call_tile)
+    if parsed is None:
+        return []
+    rank, suit = parsed
+    call_d = deaka(normalize_tile(call_tile))
+
+    counts: dict[str, int] = {}
+    for t in hand:
+        base = deaka(normalize_tile(t))
+        counts[base] = counts.get(base, 0) + 1
+
+    melds: list[tuple[str, str, str]] = []
+    for pos in range(3):
+        ranks = [rank - pos + i for i in range(3)]
+        if min(ranks) < 1 or max(ranks) > 9:
+            continue
+        seq = (f"{ranks[0]}{suit}", f"{ranks[1]}{suit}", f"{ranks[2]}{suit}")
+        if call_d not in seq:
+            continue
+        needed = [t for t in seq if t != call_d]
+        if all(counts.get(t, 0) >= 1 for t in needed):
+            melds.append(seq)
+    return sorted(set(melds))
+
+
+def chi_meld_label(seq: tuple[str, str, str]) -> str:
+    """Compact English sequence label, e.g. 6-7-8 sou."""
+    low, mid, high = seq
+    suit = low[1]
+    suit_name = _SUIT_NAMES[suit]
+    r0, r1, r2 = deaka(low)[0], deaka(mid)[0], deaka(high)[0]
+    return f"{r0}-{r1}-{r2} {suit_name}"
+
+
 def action_to_label(action: dict) -> str:
     """Compact label for prompts / pinning, e.g. 'dahai 5s'."""
     kind = action.get("type") or action.get("type_")

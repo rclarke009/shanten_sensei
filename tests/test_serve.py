@@ -89,7 +89,7 @@ def test_api_review_list_no_explanations(session_and_server):
 
 def test_api_explain_caches_and_pins(session_and_server):
     session, base, calls = session_and_server
-    resp1 = httpx.post(f"{base}/api/explain/1", timeout=5.0)
+    resp1 = httpx.post(f"{base}/api/explain/1?mode=llm", timeout=5.0)
     assert resp1.status_code == 200
     data1 = resp1.json()
     assert data1["index"] == 1
@@ -99,7 +99,7 @@ def test_api_explain_caches_and_pins(session_and_server):
     assert calls["n"] == 1
     assert session._explain_calls == 1
 
-    resp2 = httpx.post(f"{base}/api/explain/1", timeout=5.0)
+    resp2 = httpx.post(f"{base}/api/explain/1?mode=llm", timeout=5.0)
     assert resp2.status_code == 200
     assert resp2.json() == data1
     assert calls["n"] == 1
@@ -169,7 +169,7 @@ def test_api_explain_missing_key_503():
         with pytest.MonkeyPatch.context() as mp:
             mp.delenv("OPENAI_API_KEY", raising=False)
             mp.delenv("SENSEI_API_KEY", raising=False)
-            resp = httpx.post(f"{base}/api/explain/1", timeout=5.0)
+            resp = httpx.post(f"{base}/api/explain/1?mode=llm", timeout=5.0)
         assert resp.status_code == 503
         assert "API key" in resp.json()["error"]
 

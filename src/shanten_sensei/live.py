@@ -21,6 +21,7 @@ from shanten_sensei.tiles import (
     action_to_label,
     deaka,
     enrich_call_action_label,
+    enumerate_chi_melds,
     is_call_action,
     is_call_decision_action,
     is_hora_decision_action,
@@ -196,9 +197,6 @@ def infer_call_tile(
     visible_discards: dict[str, list[str]] | None = None,
 ) -> str | None:
     """Best-effort call tile when live meta only has bare pon/chi codes."""
-    wants_pon = any(parse_action_kind(c.action) == "pon" for c in candidates)
-    if not wants_pon:
-        return None
     river_ends = [
         normalize_tile(river[-1])
         for river in (visible_discards or {}).values()
@@ -206,11 +204,20 @@ def infer_call_tile(
     ]
     if not river_ends:
         return None
-    counts = tiles_to_34_array(hand)
-    matches = [t for t in river_ends if counts[tile_to_34(t)] >= 2]
-    bases = {deaka(t) for t in matches}
-    if len(bases) == 1:
-        return matches[0]
+
+    wants_pon = any(parse_action_kind(c.action) == "pon" for c in candidates)
+    if wants_pon:
+        counts = tiles_to_34_array(hand)
+        matches = [t for t in river_ends if counts[tile_to_34(t)] >= 2]
+        bases = {deaka(t) for t in matches}
+        if len(bases) == 1:
+            return matches[0]
+
+    wants_chi = any(parse_action_kind(c.action) == "chi" for c in candidates)
+    if wants_chi:
+        for tile in reversed(river_ends):
+            if enumerate_chi_melds(hand, tile):
+                return tile
     return None
 
 
@@ -353,6 +360,8 @@ def turn_from_live(
     }
     if resolved_tile:
         feat_context["call_tile"] = resolved_tile
+    if resolved_consumed:
+        feat_context["call_consumed"] = resolved_consumed
     if discard_tile and is_riichi_decision_action(mortal_best):
         feat_context["reach_discard"] = discard_tile
 

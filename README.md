@@ -6,6 +6,17 @@ Shanten Sensei sits on top of existing open-source Mahjong Soul tooling. It does
 
 ---
 
+## Download for Mac (live coaching)
+
+**Not a developer?** Start here:
+
+- **[Install on Mac](docs/install-mac.md)** — download the `.dmg` or run the one-click installer; Safari companion is the default path.
+- [Overlay Releases](https://github.com/rclarke009/shanten-sensei-overlay/releases) — macOS app bundle when published.
+
+Practice / friend / vs-AI only — not for ranked. Developer setup (Terminal, Chromium, two-repo clone): [`docs/live-setup.md`](docs/live-setup.md).
+
+---
+
 ## The problem
 
 People learning riichi mahjong (e.g. on [Mahjong Soul](https://mahjongsoul.game.yo-star.com)) want live, over-the-shoulder feedback: *why* that discard was wrong, *why* keeping this tile opens a better wait, *why* defense matters on this turn.
@@ -237,10 +248,14 @@ Failure modes to guard in the prompt / post-checks:
 
 ## How to play live (short)
 
-1. Clone [shanten-sensei-overlay](https://github.com/rclarke009/shanten-sensei-overlay) as a **sibling** of this repo.  
-2. Install Sensei editable + overlay deps; place an Akagi-compatible Mortal `.pth` in the overlay `models/` folder.  
-3. `python main.py` → **Start Browser** → Overlay on, Autoplay off.  
-4. Join a **friend / practice / vs-AI** game (not ranked).  
+**Mac users:** see **[`docs/install-mac.md`](docs/install-mac.md)** (download or one-click installer).
+
+**Developers / from source:**
+
+1. Clone [shanten-sensei-overlay](https://github.com/rclarke009/shanten-sensei-overlay) as a **sibling** of this repo, or install `shanten-sensei` from PyPI inside the overlay venv.
+2. Install overlay deps; place an Akagi-compatible Mortal `.pth` in the overlay `models/` folder.
+3. `python main.py` → **Start Browser** (Chromium) or enable Safari companion → Overlay on, Autoplay off.
+4. Join a **friend / practice / vs-AI** game (not ranked).
 5. On your turn, press **Why?** for a grounded explanation.
 
 Full commands, API key, and troubleshooting: [`docs/live-setup.md`](docs/live-setup.md).

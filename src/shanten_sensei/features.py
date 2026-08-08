@@ -778,6 +778,24 @@ def infer_hand_shape_notes(
     return notes[:max_notes]
 
 
+def alternate_cut_shape_note(
+    hand: list[str],
+    *,
+    cut_tile: str | None,
+    shape_goals: list[str] | None = None,
+    shanten: int | None = None,
+) -> HandShapeNote | None:
+    """Shape note for an alternate (contrasted) discard candidate."""
+    notes = infer_hand_shape_notes(
+        hand,
+        cut_tile=cut_tile,
+        shape_goals=shape_goals,
+        shanten=shanten,
+        max_notes=1,
+    )
+    return notes[0] if notes else None
+
+
 def infer_shape_goals(
     hand: list[str],
     *,

@@ -1,0 +1,1179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Shanten Sensei — Review</title>
+  <style>
+    :root {
+      --bg: #1a1f24;
+      --panel: #242b33;
+      --line: #3a4550;
+      --text: #e8eef4;
+      --muted: #9aabba;
+      --accent: #6eb5ff;
+      --warn: #e8b86d;
+      --danger: #e07a7a;
+      --ok: #7dcea0;
+      --man: #c45c5c;
+      --pin: #3d7ec9;
+      --sou: #3d9a6a;
+      --honor: #b8a06a;
+      --mono: "IBM Plex Mono", "SF Mono", Menlo, Consolas, monospace;
+      --sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+    header {
+      padding: 1.25rem 1.5rem 1rem;
+      border-bottom: 1px solid var(--line);
+    }
+    header h1 {
+      margin: 0;
+      font-size: 1.15rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    header .meta {
+      margin-top: 0.35rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    header .notice {
+      margin-top: 0.5rem;
+      color: var(--warn);
+      font-size: 0.8rem;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(240px, 340px) 1fr;
+      min-height: calc(100vh - 5.5rem);
+    }
+    @media (max-width: 720px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+    .list {
+      border-right: 1px solid var(--line);
+      overflow-y: auto;
+      max-height: calc(100vh - 5.5rem);
+    }
+    .row {
+      display: block;
+      width: 100%;
+      text-align: left;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      background: transparent;
+      color: var(--text);
+      padding: 0.85rem 1rem;
+      cursor: pointer;
+      font: inherit;
+    }
+    .row:hover { background: #2c343d; }
+    .row.active { background: #314052; box-shadow: inset 3px 0 0 var(--accent); }
+    .row .id { font-family: var(--mono); font-size: 0.8rem; color: var(--accent); }
+    .row .loc { font-size: 0.8rem; color: var(--muted); margin-top: 0.15rem; }
+    .row .actions { font-family: var(--mono); font-size: 0.85rem; margin-top: 0.35rem; }
+    .detail {
+      padding: 1.25rem 1.5rem 2rem;
+      overflow-y: auto;
+    }
+    .empty { color: var(--muted); }
+    .detail-head {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem 0.75rem;
+      align-items: baseline;
+      margin-bottom: 0.85rem;
+    }
+    .detail-head .id {
+      font-family: var(--mono);
+      color: var(--accent);
+      font-size: 1rem;
+    }
+    .detail-head .loc {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    .strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin: 0 0 0.75rem;
+    }
+    .chip {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      padding: 0.25rem 0.55rem;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--panel);
+      color: var(--muted);
+    }
+    .chip.on { color: var(--text); border-color: #4d5d6d; }
+    .chip.warn { color: var(--warn); border-color: #6a5530; }
+    .aiming-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem 0.75rem;
+      align-items: baseline;
+      margin: 0 0 0.75rem;
+      padding: 0.45rem 0.7rem;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font-size: 0.9rem;
+    }
+    .aiming-row .label {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+    }
+    .aiming-row .value { color: var(--text); flex: 1 1 auto; min-width: 12rem; }
+    .aiming-row a {
+      color: var(--accent);
+      font-size: 0.85rem;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .aiming-row a:hover { text-decoration: underline; }
+    .section-label {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin: 0 0 0.45rem;
+    }
+    .tile-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.28rem;
+      margin-bottom: 0.85rem;
+    }
+    .tile {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-width: 2.35rem;
+      height: 3.1rem;
+      padding: 0.2rem 0.25rem 0.15rem;
+      border-radius: 5px;
+      background: #f4f1ea;
+      border: 2px solid #c8c2b4;
+      color: #1a1a1a;
+      line-height: 1;
+      box-shadow: 0 1px 0 #9a9488;
+    }
+    .tile.sm {
+      min-width: 1.85rem;
+      height: 2.45rem;
+      padding: 0.12rem 0.18rem 0.1rem;
+    }
+    .tile.sm .glyph { font-size: 1.2rem; }
+    .tile.sm .code { font-size: 0.5rem; }
+    .tile .glyph {
+      font-size: 1.55rem;
+      line-height: 1.1;
+    }
+    .tile .code {
+      font-family: var(--mono);
+      font-size: 0.55rem;
+      margin-top: 0.1rem;
+      color: #5a554c;
+    }
+    .tile.suit-m .glyph { color: var(--man); }
+    .tile.suit-p .glyph { color: var(--pin); }
+    .tile.suit-s .glyph { color: var(--sou); }
+    .tile.suit-z .glyph { color: var(--honor); }
+    .tile.mortal {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent), 0 1px 0 #9a9488;
+    }
+    .tile.player {
+      border-color: var(--warn);
+      box-shadow: 0 0 0 1px var(--warn), 0 1px 0 #9a9488;
+    }
+    .tile.both {
+      border-color: var(--ok);
+      box-shadow: 0 0 0 1px var(--ok), 0 1px 0 #9a9488;
+    }
+    .tile.furiten {
+      border-color: #a33;
+      box-shadow: 0 0 0 1px #a33, 0 1px 0 #9a9488;
+      position: relative;
+    }
+    .tile .furiten-badge {
+      position: absolute;
+      top: -0.35rem;
+      right: -0.2rem;
+      font-family: var(--mono);
+      font-size: 0.45rem;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      color: #fff;
+      background: #a33;
+      padding: 0.08rem 0.22rem;
+      border-radius: 3px;
+      line-height: 1.1;
+    }
+    .furiten-note {
+      font-size: 0.85rem;
+      color: var(--warn);
+      margin: -0.4rem 0 0.85rem;
+    }
+    .moves {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.65rem 1rem;
+      margin: 0 0 0.85rem;
+      padding: 0.55rem 0.75rem;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    .move {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      min-width: 0;
+    }
+    .move .label {
+      font-size: 0.78rem;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .move .action {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+    .move-vs {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+    .board-details {
+      margin-top: 1.1rem;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 0.35rem 0.75rem 0.15rem;
+    }
+    .board-details > summary {
+      cursor: pointer;
+      list-style: none;
+      font-size: 0.88rem;
+      color: var(--muted);
+      padding: 0.45rem 0;
+      user-select: none;
+    }
+    .board-details > summary::-webkit-details-marker { display: none; }
+    .board-details > summary::before {
+      content: "▸ ";
+      color: var(--accent);
+      font-family: var(--mono);
+    }
+    .board-details[open] > summary::before { content: "▾ "; }
+    .board-details[open] > summary {
+      margin-bottom: 0.55rem;
+      border-bottom: 1px solid var(--line);
+    }
+    .board-details .inner { padding-bottom: 0.5rem; }
+    .terms-panel {
+      margin-top: 0.75rem;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0.55rem 0.75rem;
+      background: rgba(0, 0, 0, 0.15);
+      max-width: 52rem;
+    }
+    .terms-panel > summary {
+      cursor: pointer;
+      font-weight: 600;
+      color: var(--text);
+      list-style: none;
+    }
+    .terms-panel > summary::-webkit-details-marker { display: none; }
+    .terms-panel > summary::before {
+      content: "▸ ";
+      color: var(--accent);
+      font-family: var(--mono);
+    }
+    .terms-panel[open] > summary::before { content: "▾ "; }
+    .terms-hint {
+      margin: 0.4rem 0 0.65rem;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+    .terms-groups {
+      display: grid;
+      gap: 0.75rem;
+    }
+    .terms-group h3 {
+      margin: 0 0 0.35rem;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+    }
+    .terms-group label {
+      display: flex;
+      gap: 0.45rem;
+      align-items: flex-start;
+      margin: 0.2rem 0;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+    .terms-group .gloss {
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+    .why-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      align-items: center;
+    }
+    .score-tips-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+      cursor: pointer;
+      user-select: none;
+    }
+    .score-tips-toggle input {
+      accent-color: var(--accent);
+    }
+    button.why {
+      appearance: none;
+      border: 1px solid var(--accent);
+      background: #243649;
+      color: var(--accent);
+      font: inherit;
+      font-weight: 600;
+      padding: 0.55rem 1.1rem;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    button.why:hover:not(:disabled) { background: #2d4560; }
+    button.why:disabled { opacity: 0.55; cursor: wait; }
+    button.why.secondary {
+      border-color: var(--line);
+      background: transparent;
+      color: var(--muted);
+      font-weight: 500;
+    }
+    button.why.secondary:hover:not(:disabled) {
+      background: #2c343d;
+      color: var(--text);
+    }
+    .yakuman-row {
+      display: flex;
+      gap: 0.75rem;
+      align-items: flex-start;
+      margin-top: 0.65rem;
+    }
+    .yakuman-row .yakuman-face {
+      width: 56px;
+      height: 56px;
+      flex: 0 0 auto;
+      border-radius: 8px;
+      object-fit: cover;
+      background: var(--panel);
+      border: 1px solid var(--line);
+    }
+    .yakuman-row .why-box {
+      flex: 1 1 auto;
+      min-width: 0;
+      margin-top: 0;
+    }
+    .why-box {
+      margin-top: 0.65rem;
+      padding: 1rem 1.1rem;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    .why-box .focus {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 0.4rem;
+    }
+    .why-box .summary { font-size: 1.05rem; white-space: pre-line; }
+    .yakuman-intro .summary { color: var(--text); }
+    .why-box .detail-text {
+      margin-top: 0.65rem;
+      padding-top: 0.65rem;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.95rem;
+      line-height: 1.45;
+    }
+    .why-box .more-btn {
+      margin-top: 0.55rem;
+      border: none;
+      background: transparent;
+      color: var(--accent);
+      font: inherit;
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 0;
+      cursor: pointer;
+    }
+    .why-box .more-btn:hover { text-decoration: underline; }
+    .why-box .source-badge {
+      display: inline-block;
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--warn);
+      border: 1px solid #6a5530;
+      border-radius: 999px;
+      padding: 0.15rem 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+    .err {
+      margin-top: 0.55rem;
+      color: var(--danger);
+      font-size: 0.9rem;
+    }
+    .ground {
+      margin-top: 0.75rem;
+      color: var(--warn);
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Shanten Sensei</h1>
+    <div class="meta" id="meta">Loading review…</div>
+    <div class="notice">Practice / review only — not for ranked assistance.</div>
+    <details class="terms-panel" id="terms-panel">
+      <summary>Terms I know</summary>
+      <p class="terms-hint">
+        Checked terms keep their names in tips but hide the definitions.
+      </p>
+      <div class="terms-groups" id="terms-checklist"></div>
+    </details>
+  </header>
+  <div class="layout">
+    <nav class="list" id="list" aria-label="Diverge turns"></nav>
+    <main class="detail" id="detail">
+      <p class="empty">Select a diverge turn.</p>
+    </main>
+  </div>
+  <script>
+    const YAKUMAN_INTRO =
+      "Hi, I'm Yakuman — you'll get that pun later. " +
+      "I'm here to help you learn Riichi Mahjong. " +
+      "We'll have you winning in no time!";
+
+    const KNOWN_TERMS_KEY = "shanten_sensei_known_terms";
+
+    function loadKnownTerms() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(KNOWN_TERMS_KEY) || "[]");
+        return Array.isArray(raw)
+          ? raw.filter((x) => typeof x === "string")
+          : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function saveKnownTerms(terms) {
+      localStorage.setItem(KNOWN_TERMS_KEY, JSON.stringify(terms));
+    }
+
+    const state = {
+      diverges: [],
+      selected: null,
+      explanations: {},
+      loadingOffline: {},
+      glossChecklist: [],
+      knownTerms: loadKnownTerms(),
+      scoreTips: false,
+    };
+
+    function knownTermsQs(prefix) {
+      const t = (state.knownTerms || []).slice().sort();
+      if (!t.length) return "";
+      return `${prefix}known_terms=${encodeURIComponent(t.join(","))}`;
+    }
+
+    function knownTermsFingerprint() {
+      return (state.knownTerms || []).slice().sort().join(",");
+    }
+
+    const MAN = ["🀇","🀈","🀉","🀊","🀋","🀌","🀍","🀎","🀏"];
+    const PIN = ["🀙","🀚","🀛","🀜","🀝","🀞","🀟","🀠","🀡"];
+    const SOU = ["🀐","🀑","🀒","🀓","🀔","🀕","🀖","🀗","🀘"];
+    const HONOR = { E: "🀀", S: "🀁", W: "🀂", N: "🀃", P: "🀆", F: "🀅", C: "🀄" };
+
+    function el(tag, attrs = {}, ...children) {
+      const node = document.createElement(tag);
+      for (const [k, v] of Object.entries(attrs)) {
+        if (k === "className") node.className = v;
+        else if (k.startsWith("on") && typeof v === "function") {
+          node.addEventListener(k.slice(2).toLowerCase(), v);
+        } else if (v !== null && v !== undefined) node.setAttribute(k, v);
+      }
+      for (const child of children) {
+        if (child == null) continue;
+        node.append(child.nodeType ? child : document.createTextNode(String(child)));
+      }
+      return node;
+    }
+
+    function tileFace(label) {
+      const t = String(label || "").trim();
+      if (!t) return { glyph: "?", suit: "z", code: "?" };
+      if (HONOR[t]) return { glyph: HONOR[t], suit: "z", code: t };
+      const red = /^(5[mps])r$/.test(t) || t === "0m" || t === "0p" || t === "0s";
+      let base = t;
+      if (t === "0m" || t === "5mr") base = "5m";
+      else if (t === "0p" || t === "5pr") base = "5p";
+      else if (t === "0s" || t === "5sr") base = "5s";
+      else if (red) base = t.slice(0, 2);
+      if (base.length >= 2 && base[0] >= "1" && base[0] <= "9") {
+        const n = parseInt(base[0], 10) - 1;
+        const suit = base[1];
+        if (suit === "m") return { glyph: MAN[n], suit: "m", code: t };
+        if (suit === "p") return { glyph: PIN[n], suit: "p", code: t };
+        if (suit === "s") return { glyph: SOU[n], suit: "s", code: t };
+      }
+      return { glyph: t, suit: "z", code: t };
+    }
+
+    function actionTile(action) {
+      if (!action) return null;
+      const s = String(action);
+      if (s.startsWith("dahai ")) return s.slice(6).trim();
+      return null;
+    }
+
+    function deakaTile(label) {
+      const t = String(label || "").trim();
+      if (t === "5mr" || t === "0m") return "5m";
+      if (t === "5pr" || t === "0p") return "5p";
+      if (t === "5sr" || t === "0s") return "5s";
+      return t;
+    }
+
+    function makeTile(label, mark, { small = false, furiten = false } = {}) {
+      const face = tileFace(label);
+      let markClass = "";
+      if (mark === "mortal") markClass = " mortal";
+      else if (mark === "player") markClass = " player";
+      else if (mark === "both") markClass = " both";
+      if (furiten) markClass += " furiten";
+      const kids = [
+        el("span", { className: "glyph" }, face.glyph),
+        el("span", { className: "code" }, face.code),
+      ];
+      if (furiten) kids.push(el("span", { className: "furiten-badge" }, "Furiten"));
+      return el(
+        "span",
+        {
+          className: `tile suit-${face.suit}${markClass}${small ? " sm" : ""}`,
+          title: furiten ? `${face.code} (furiten — tsumo only)` : face.code,
+          "aria-label": furiten ? `${face.code} furiten` : face.code,
+        },
+        ...kids
+      );
+    }
+
+    function tileRow(labels, { mortalTile, playerTile, furitenAll = false, furitenTiles = null } = {}) {
+      const row = el("div", { className: "tile-row" });
+      const usedMortal = { n: 0 };
+      const usedPlayer = { n: 0 };
+      const blockSet = new Set((furitenTiles || []).map(deakaTile));
+      for (const label of labels || []) {
+        let mark = null;
+        const isM = mortalTile && label === mortalTile;
+        const isP = playerTile && label === playerTile;
+        if (isM && isP && usedMortal.n === 0 && usedPlayer.n === 0) {
+          mark = "both";
+          usedMortal.n += 1;
+          usedPlayer.n += 1;
+        } else if (isM && usedMortal.n === 0) {
+          mark = "mortal";
+          usedMortal.n += 1;
+        } else if (isP && usedPlayer.n === 0) {
+          mark = "player";
+          usedPlayer.n += 1;
+        }
+        const isFuriten =
+          furitenAll || (blockSet.size > 0 && blockSet.has(deakaTile(label)));
+        row.append(makeTile(label, mark, { furiten: isFuriten }));
+      }
+      return row;
+    }
+
+    function formatLoc(d) {
+      return `kyoku ${d.kyoku ?? "–"} · honba ${d.honba ?? "–"} · junme ${d.junme ?? "–"}`;
+    }
+
+    function statusChips(d) {
+      const s = d.statuses || {};
+      const chips = [];
+      chips.push({ text: s.menzen ? "closed" : "open", on: true });
+      const shantenVal = s.shanten ?? d.shanten;
+      // Malformed-hand sentinel from features._shanten_with_melds
+      if (shantenVal === 8) {
+        chips.push({
+          text: d.shanten_label || "hand sync · status unavailable",
+          on: true,
+        });
+        return chips;
+      }
+      if (s.tenpai || shantenVal === 0) {
+        chips.push({ text: d.shanten_label || "tenpai (ready)", on: true });
+      } else {
+        chips.push({
+          text: d.shanten_label || `${shantenVal}-shanten`,
+          on: true,
+        });
+      }
+      chips.push({
+        text: d.ukeire_label || `ukeire ${d.ukeire ?? "–"}`,
+        on: true,
+      });
+      const waitLabel = d.wait_shape_label || d.wait_shape || s.wait_shape;
+      if (waitLabel) chips.push({ text: `wait ${waitLabel}`, on: true });
+      const furitenText =
+        d.furiten_label ||
+        (s.temporary_furiten
+          ? "temp furiten (passed a win this turn)"
+          : s.furiten
+            ? "furiten (can’t win on discard — tsumo only)"
+            : "not furiten");
+      chips.push({
+        text: furitenText,
+        on: !!(s.furiten || s.temporary_furiten),
+        warn: !!(s.furiten || s.temporary_furiten),
+      });
+
+      if (s.riichi) chips.push({ text: "riichi", on: true });
+      if (s.ippatsu) chips.push({ text: "ippatsu", on: true });
+      if (s.dora_in_hand && s.dora_in_hand.length) {
+        const doraKnown = (state.knownTerms || []).includes("dora");
+        const doraText = doraKnown
+          ? `dora ${s.dora_in_hand.join(" ")}`
+          : `dora (bonus tile) ${s.dora_in_hand.join(" ")}`;
+        chips.push({ text: doraText, on: true });
+      }
+      if (s.visible_dora && s.visible_dora.length) {
+        chips.push({ text: `indicators ${s.visible_dora.join(" ")}`, on: true });
+      }
+      if (d.danger && Object.keys(d.danger).length) {
+        const labels = d.danger_labels || {};
+        for (const [tile, tag] of Object.entries(d.danger)) {
+          const glossed = labels[tile] || tag;
+          chips.push({ text: `${tile}: ${glossed}`, warn: true });
+        }
+      }
+      return chips;
+    }
+
+    function actionLabel(d, which) {
+      if (which === "mortal") {
+        return d.mortal_best_label || d.mortal_best || "–";
+      }
+      return d.player_action_label || d.player_action || "–";
+    }
+
+    function renderList() {
+      const list = document.getElementById("list");
+      list.replaceChildren();
+      for (const d of state.diverges) {
+        const btn = el(
+          "button",
+          {
+            className: "row" + (state.selected === d.index ? " active" : ""),
+            type: "button",
+            onClick: () => selectDiverge(d.index),
+          },
+          el("div", { className: "id" }, `E${d.index}`),
+          el("div", { className: "loc" }, formatLoc(d)),
+          el(
+            "div",
+            { className: "actions" },
+            `${actionLabel(d, "mortal")}  vs  ${actionLabel(d, "player")}`
+          )
+        );
+        list.append(btn);
+      }
+    }
+
+    function selectDiverge(index) {
+      state.selected = index;
+      renderList();
+      renderDetail();
+      ensureOfflineExplanation(index);
+    }
+
+    function moveChip(kind, title, action, display) {
+      const tile = actionTile(action);
+      const chip = el(
+        "div",
+        { className: "move" },
+        el("span", { className: "label" }, title)
+      );
+      if (tile) chip.append(makeTile(tile, kind, { small: true }));
+      chip.append(el("span", { className: "action" }, display || action || "–"));
+      return chip;
+    }
+
+    function renderDetail() {
+      const detail = document.getElementById("detail");
+      const d = state.diverges.find((x) => x.index === state.selected);
+      if (!d) {
+        detail.replaceChildren(
+          el("p", { className: "empty" }, "Select a diverge turn."),
+          yakumanBubble(YAKUMAN_INTRO, { intro: true, pose: "idle" })
+        );
+        return;
+      }
+
+      const mortalTile = actionTile(d.mortal_best);
+      const playerTile = actionTile(d.player_action);
+
+      const strip = el("div", { className: "strip" });
+      for (const chip of statusChips(d)) {
+        strip.append(
+          el(
+            "span",
+            {
+              className:
+                "chip" + (chip.on ? " on" : "") + (chip.warn ? " warn" : ""),
+            },
+            chip.text
+          )
+        );
+      }
+
+      const aiming = el(
+        "div",
+        { className: "aiming-row" },
+        el("span", { className: "label" }, "Aiming for"),
+        el("span", { className: "value" }, d.aiming_for || "no clear yaku shape yet")
+      );
+      if (d.yaku_reference_url) {
+        aiming.append(
+          el(
+            "a",
+            {
+              href: d.yaku_reference_url,
+              target: "_blank",
+              rel: "noopener noreferrer",
+            },
+            d.yaku_reference_label || "Yaku list"
+          )
+        );
+      }
+
+      const moves = el(
+        "div",
+        { className: "moves" },
+        moveChip("mortal", "Mortal", d.mortal_best, d.mortal_best_label),
+        el("span", { className: "move-vs" }, "vs"),
+        moveChip("player", "You", d.player_action, d.player_action_label)
+      );
+
+      const whyBox = el("div", { id: "why-box" });
+      const preferred =
+        state.explanations[cacheKey(d.index, "llm")] ||
+        state.explanations[cacheKey(d.index, "template")];
+      if (preferred) {
+        whyBox.append(renderWhy(preferred));
+      } else if (state.loadingOffline[d.index]) {
+        whyBox.append(yakumanBubble("Building explanation…", { pose: "talk" }));
+      } else {
+        whyBox.append(yakumanBubble(YAKUMAN_INTRO, { intro: true, pose: "idle" }));
+      }
+
+      const err = el("div", { className: "err", id: "why-err" });
+      const offlineWrap = el("div", { id: "offline-wrap" });
+
+      const llmCached = state.explanations[cacheKey(d.index, "llm")];
+      const whyBtn = el(
+        "button",
+        {
+          className: "why",
+          type: "button",
+          id: "why-btn",
+          onClick: () => askWhy(d.index, "llm"),
+        },
+        llmCached ? "Why? (cached)" : "Why?"
+      );
+
+      const scoreTipsLabel = el(
+        "label",
+        { className: "score-tips-toggle" },
+        (() => {
+          const cb = el("input", {
+            type: "checkbox",
+            id: "score-tips-cb",
+          });
+          cb.checked = !!state.scoreTips;
+          cb.addEventListener("change", () => {
+            state.scoreTips = !!cb.checked;
+            const hadLlm = Object.keys(state.explanations).some((k) =>
+              k.startsWith(`${d.index}:llm:`)
+            );
+            const hadTemplate = Object.keys(state.explanations).some((k) =>
+              k.startsWith(`${d.index}:template:`)
+            );
+            renderDetail();
+            if (hadLlm) {
+              askWhy(d.index, "llm").catch(() => {});
+            } else if (hadTemplate) {
+              askWhy(d.index, "template", { silent: true }).catch(() => {});
+            }
+          });
+          return cb;
+        })(),
+        " Point tips"
+      );
+
+      const boardInner = el("div", { className: "inner" });
+      boardInner.append(
+        el("div", { className: "section-label" }, "Hand"),
+        tileRow(d.hand || [], { mortalTile, playerTile })
+      );
+      if (d.calls && d.calls.length) {
+        boardInner.append(
+          el("div", { className: "section-label" }, "Calls"),
+          el(
+            "div",
+            { className: "tile-row" },
+            el(
+              "span",
+              { style: "font-family: var(--mono); font-size: 0.85rem; color: var(--muted);" },
+              JSON.stringify(d.calls)
+            )
+          )
+        );
+      }
+      const ukeireTiles = d.ukeire_tiles || [];
+      if (ukeireTiles.length) {
+        const furiten = !!(d.statuses && d.statuses.furiten);
+        const blocking = d.furiten_blocking_tiles || [];
+        boardInner.append(
+          el("div", { className: "section-label" }, `Waits / ukeire (${d.ukeire ?? ukeireTiles.length})`),
+          tileRow(ukeireTiles, {
+            furitenAll: furiten,
+            furitenTiles: blocking,
+          })
+        );
+        if (furiten) {
+          const note =
+            blocking.length > 0
+              ? `Furiten for ron — discarded ${blocking.join(", ")}; can’t win on any discard (tsumo only)`
+              : "Furiten for ron — can’t win on any discard (tsumo only)";
+          boardInner.append(el("div", { className: "furiten-note" }, note));
+        }
+      }
+
+      const boardDetails = el(
+        "details",
+        { className: "board-details" },
+        el("summary", {}, "Show hand & waits"),
+        boardInner
+      );
+
+      detail.replaceChildren(
+        el(
+          "div",
+          { className: "detail-head" },
+          el("span", { className: "id" }, `E${d.index}`),
+          el("span", { className: "loc" }, formatLoc(d))
+        ),
+        strip,
+        aiming,
+        moves,
+        el("div", { className: "section-label" }, "Yakuman says"),
+        el("div", { className: "why-actions" }, whyBtn, scoreTipsLabel, offlineWrap),
+        err,
+        whyBox,
+        boardDetails
+      );
+    }
+
+    function yakumanBubble(summary, opts = {}) {
+      const pose = opts.pose === "talk" ? "talk" : "idle";
+      const box = el(
+        "div",
+        { className: "why-box" + (opts.intro ? " yakuman-intro" : "") },
+        el("div", { className: "focus" }, "Yakuman"),
+        el("div", { className: "summary" }, summary || "")
+      );
+      return el(
+        "div",
+        { className: "yakuman-row" },
+        el("img", {
+          className: "yakuman-face",
+          src: pose === "talk" ? "/yakuman_talk.png" : "/yakuman_idle.png",
+          alt: "Yakuman",
+          width: "56",
+          height: "56",
+        }),
+        box
+      );
+    }
+
+    function renderWhy(payload) {
+      const exp = payload.explanation || {};
+      const row = yakumanBubble(exp.summary || "", { pose: "talk" });
+      const box = row.querySelector(".why-box");
+      if (payload.source === "template") {
+        box.insertBefore(
+          el("div", { className: "source-badge" }, "offline template"),
+          box.firstChild
+        );
+      }
+      if (exp.focus) {
+        const focus = box.querySelector(".focus");
+        if (focus) focus.textContent = exp.focus;
+      }
+      if (exp.detail) {
+        const detailEl = el("div", { className: "detail-text", hidden: "hidden" }, exp.detail);
+        const moreBtn = el(
+          "button",
+          {
+            className: "more-btn",
+            type: "button",
+            onClick: () => {
+              const open = detailEl.hasAttribute("hidden");
+              if (open) {
+                detailEl.removeAttribute("hidden");
+                moreBtn.textContent = "Less";
+              } else {
+                detailEl.setAttribute("hidden", "hidden");
+                moreBtn.textContent = "More";
+              }
+            },
+          },
+          "More"
+        );
+        box.append(moreBtn, detailEl);
+      }
+      if (payload.grounding_errors && payload.grounding_errors.length) {
+        box.append(
+          el(
+            "div",
+            { className: "ground" },
+            "Grounding warnings: " + payload.grounding_errors.join("; ")
+          )
+        );
+      }
+      return row;
+    }
+
+    function showOfflineButton(index) {
+      const wrap = document.getElementById("offline-wrap");
+      if (!wrap || wrap.childElementCount) return;
+      wrap.append(
+        el(
+          "button",
+          {
+            className: "why secondary",
+            type: "button",
+            id: "offline-btn",
+            onClick: () => askWhy(index, "template"),
+          },
+          "Offline explanation"
+        )
+      );
+    }
+
+    function cacheKey(index, mode) {
+      return `${index}:${mode}:${knownTermsFingerprint()}:score${state.scoreTips ? 1 : 0}`;
+    }
+
+    function renderTermsChecklist() {
+      const root = document.getElementById("terms-checklist");
+      if (!root) return;
+      root.replaceChildren();
+      const known = new Set(state.knownTerms || []);
+      const byGroup = new Map();
+      for (const item of state.glossChecklist || []) {
+        if (!byGroup.has(item.group)) byGroup.set(item.group, []);
+        byGroup.get(item.group).push(item);
+      }
+      for (const [group, items] of byGroup) {
+        const box = el("div", { className: "terms-group" }, el("h3", {}, group));
+        for (const item of items) {
+          const input = document.createElement("input");
+          input.type = "checkbox";
+          input.checked = known.has(item.id);
+          input.addEventListener("change", (ev) =>
+            onKnownTermToggle(item.id, ev.target.checked)
+          );
+          box.append(
+            el(
+              "label",
+              {},
+              input,
+              el(
+                "span",
+                {},
+                item.id,
+                " ",
+                el("span", { className: "gloss" }, `(${item.gloss})`)
+              )
+            )
+          );
+        }
+        root.append(box);
+      }
+    }
+
+    async function onKnownTermToggle(termId, checked) {
+      const next = new Set(state.knownTerms || []);
+      if (checked) next.add(termId);
+      else next.delete(termId);
+      state.knownTerms = Array.from(next).sort();
+      saveKnownTerms(state.knownTerms);
+      state.explanations = {};
+      await reloadReview({ keepSelection: true });
+    }
+
+    async function reloadReview(opts = {}) {
+      const meta = document.getElementById("meta");
+      const prev = state.selected;
+      const resp = await fetch(`/api/review${knownTermsQs("?")}`);
+      if (!resp.ok) throw new Error(`Failed to load review (${resp.status})`);
+      const data = await resp.json();
+      state.diverges = data.diverges || [];
+      state.glossChecklist = data.gloss_checklist || [];
+      if (Array.isArray(data.known_terms)) {
+        // Server may drop unknown ids
+        state.knownTerms = data.known_terms;
+        saveKnownTerms(state.knownTerms);
+      }
+      if (meta) {
+        meta.textContent = `${data.log_id || "report"} · ${data.diverge_count} diverges`;
+      }
+      renderTermsChecklist();
+      renderList();
+      if (opts.keepSelection && prev != null && state.diverges.some((d) => d.index === prev)) {
+        selectDiverge(prev);
+      } else if (state.diverges.length) {
+        selectDiverge(state.diverges[0].index);
+      } else {
+        renderDetail();
+      }
+    }
+
+    async function ensureOfflineExplanation(index) {
+      if (state.explanations[cacheKey(index, "template")] || state.explanations[cacheKey(index, "llm")]) {
+        return;
+      }
+      if (state.loadingOffline[index]) return;
+      state.loadingOffline[index] = true;
+      try {
+        await askWhy(index, "template", { silent: true });
+      } finally {
+        state.loadingOffline[index] = false;
+        if (state.selected === index) renderDetail();
+      }
+    }
+
+    async function askWhy(index, mode, opts = {}) {
+      const btn = document.getElementById("why-btn");
+      const offlineBtn = document.getElementById("offline-btn");
+      const err = document.getElementById("why-err");
+      const whyBox = document.getElementById("why-box");
+      if (err && !opts.silent) err.textContent = "";
+      const key = cacheKey(index, mode);
+      const cached = state.explanations[key];
+      if (cached) {
+        if (whyBox && state.selected === index) {
+          whyBox.replaceChildren(renderWhy(cached));
+        }
+        return cached;
+      }
+      const activeBtn = mode === "template" ? offlineBtn : btn;
+      if (!opts.silent && activeBtn) {
+        activeBtn.disabled = true;
+        activeBtn.textContent = mode === "template" ? "Building…" : "Asking…";
+      }
+      if (!opts.silent && btn) btn.disabled = true;
+      if (!opts.silent && offlineBtn) offlineBtn.disabled = true;
+      try {
+        const params = new URLSearchParams();
+        if (mode === "template") params.set("mode", "template");
+        if (state.scoreTips) params.set("score_tips", "1");
+        const known = (state.knownTerms || []).slice().sort();
+        if (known.length) params.set("known_terms", known.join(","));
+        const qs = params.toString() ? `?${params.toString()}` : "";
+        const resp = await fetch(`/api/explain/${index}${qs}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            known_terms: state.knownTerms || [],
+            score_tips: !!state.scoreTips,
+          }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+          throw new Error(data.error || `HTTP ${resp.status}`);
+        }
+        state.explanations[key] = data;
+        if (whyBox && state.selected === index) {
+          whyBox.replaceChildren(renderWhy(data));
+        }
+        if (btn && state.selected === index) {
+          btn.textContent =
+            state.explanations[cacheKey(index, "llm")] ? "Why? (cached)" : "Why?";
+        }
+        if (offlineBtn) offlineBtn.textContent = "Offline explanation";
+        return data;
+      } catch (e) {
+        if (err && !opts.silent) err.textContent = e.message || String(e);
+        if (mode === "llm") showOfflineButton(index);
+        if (btn) btn.textContent = state.explanations[cacheKey(index, "llm")] ? "Why? (cached)" : "Why?";
+        if (offlineBtn) offlineBtn.textContent = "Offline explanation";
+        if (!opts.silent) throw e;
+        return null;
+      } finally {
+        if (btn) btn.disabled = false;
+        const ob = document.getElementById("offline-btn");
+        if (ob) ob.disabled = false;
+      }
+    }
+
+    async function boot() {
+      const meta = document.getElementById("meta");
+      try {
+        await reloadReview();
+      } catch (e) {
+        meta.textContent = e.message || String(e);
+        renderTermsChecklist();
+        renderDetail();
+      }
+    }
+
+    boot();
+  </script>
+</body>
+</html>

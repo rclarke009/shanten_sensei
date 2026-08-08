@@ -190,7 +190,79 @@ def test_diverge_005_chi_voice():
     assert "Throw" not in result.summary
     assert "Chi" in result.summary or "chi" in result.summary.lower()
     assert "skip" in result.summary.lower()
+    assert "4-5-6" in result.summary or "4-man" in result.summary.lower()
     assert validate_explanation(turn, result) == []
+
+
+SCREENSHOT_SKIP_CHI_HAND = [
+    "4m",
+    "7m",
+    "8m",
+    "9m",
+    "2s",
+    "3s",
+    "4s",
+    "6s",
+    "8s",
+    "9s",
+    "8p",
+    "8p",
+    "9p",
+]
+
+
+def test_template_skip_chi_lists_both_melds_without_consumed():
+    turn = turn_from_live(
+        hand=SCREENSHOT_SKIP_CHI_HAND,
+        recommended="none",
+        candidates=candidates_from_meta_options([("none", 0.9), ("chi_mid", 0.1)]),
+        call_tile="7s",
+        visible_discards={"2": ["7s"]},
+    )
+    turn.features.shanten = 2
+    turn.features.shape_goals = ["pinfu"]
+    turn.features.ukeire = turn.features.ukeire.model_copy(update={"count": 11})
+
+    result = template_explain(turn)
+    summary_l = result.summary.lower()
+    assert "skip the chi on" in summary_l
+    assert "7-sou" in summary_l
+    assert "6-7-8" in summary_l
+    assert "7-8-9" in summary_l
+    assert "open" in summary_l or "riichi" in summary_l
+    assert validate_explanation(turn, result) == []
+
+
+def test_template_skip_chi_names_mortal_meld_when_consumed_known():
+    turn = turn_from_live(
+        hand=SCREENSHOT_SKIP_CHI_HAND,
+        recommended="none",
+        candidates=candidates_from_meta_options([("none", 0.9), ("chi_mid", 0.1)]),
+        call_tile="7s",
+        call_consumed=["6s", "8s"],
+        visible_discards={"2": ["7s"]},
+    )
+    turn.features.shanten = 2
+    turn.features.shape_goals = ["pinfu"]
+    turn.features.ukeire = turn.features.ukeire.model_copy(update={"count": 11})
+
+    result = template_explain(turn)
+    summary_l = result.summary.lower()
+    assert "6-7-8" in summary_l
+    assert "7-8-9" not in summary_l
+    assert validate_explanation(turn, result) == []
+
+
+def test_infer_chi_call_tile_from_river():
+    turn = turn_from_live(
+        hand=SCREENSHOT_SKIP_CHI_HAND,
+        recommended="none",
+        candidates=candidates_from_meta_options([("none", 0.9), ("chi_mid", 0.1)]),
+        visible_discards={"2": ["3m", "7s"]},
+    )
+    assert turn.features.context.get("call_tile") == "7s"
+    result = template_explain(turn)
+    assert "7-sou" in result.summary.lower()
 
 
 def test_template_call_does_not_claim_pinfu():

@@ -1,6 +1,9 @@
 # How to play live with Shanten Sensei
 
-Live coaching uses two sibling repos: this explainer library, and the [overlay fork](https://github.com/rclarke009/shanten-sensei-overlay) (Mahjong Copilot + **Why?**).
+> **Mac players (no Terminal):** use **[`install-mac.md`](install-mac.md)** or the [overlay INSTALL.md](https://github.com/rclarke009/shanten-sensei-overlay/blob/main/INSTALL.md).  
+> **This page** is the developer / from-source guide (clone repos, `pip`, Chromium, tests).
+
+Live coaching uses the [overlay fork](https://github.com/rclarke009/shanten-sensei-overlay) (Mahjong Copilot + **Why?**) plus the `shanten-sensei` package (PyPI or sibling clone).
 
 **Practice / friend / vs-AI only — not for ranked.** Why? is disabled when ranked (段位戦) is detected.
 
@@ -37,6 +40,10 @@ a_new_projects_folder/
 
 ### 1. Install Sensei (this repo)
 
+**Overlay users:** `pip install shanten-sensei` inside the overlay venv (see overlay `requirements.txt`) — no sibling clone required.
+
+**Contributors** (editable install):
+
 ```bash
 cd shanten_sensei
 uv venv .venv
@@ -48,9 +55,13 @@ Optional — for LLM explanations instead of the offline template:
 ```bash
 # repo-root .env
 OPENAI_API_KEY=sk-...
+SENSEI_USE_LLM=1
 # or
 SENSEI_API_KEY=...
+SENSEI_USE_LLM=1
 ```
+
+An API key alone does **not** enable the LLM; you must set `SENSEI_USE_LLM=1` (or pass `--llm` / `?mode=llm` on supported surfaces).
 
 ### 2. Install the overlay
 
@@ -62,7 +73,8 @@ python3.11 -m venv venv
 source venv/bin/activate          # Windows: venv\Scripts\activate
 python -m pip install -U pip
 pip install -r requirements.txt
-pip install -e ../shanten_sensei
+pip install 'shanten-sensei>=0.1.0'
+# Or editable sibling for development: pip install -e ../shanten_sensei
 # Compat pins (torch 2.2 + mitmproxy 10.2):
 pip install 'numpy<2' 'httpx>=0.27,<0.28' 'httpcore>=1.0,<1.0.9' 'h11>=0.11,<0.15'
 PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium
@@ -131,7 +143,8 @@ Use this if you want Majsoul in **Safari** and the coach in the Sensei window be
 1. **Settings → enable “Safari companion mode (macOS; no Chromium)”** → Save. Restart the overlay when prompted (MITM / proxy settings need a restart).
 2. **Start the overlay** (`python main.py`). It starts mitm, trusts/installs the local MITM cert if needed, serves a Majsoul-only PAC at `http://127.0.0.1:{mitm_port+1}/…`, and turns on Auto Proxy via `networksetup`. You may see a Keychain or admin prompt for the cert.
 3. **Do not** click **Start Web Client**. Tips appear in the Sensei window, not inside Safari.
-4. **Fully quit Safari** (`Cmd+Q`), then reopen → `https://mahjongsoul.game.yo-star.com/`.
+4. **Fully quit Safari** (`Cmd+Q`), then reopen → `https://mahjongsoul.game.yo-star.com/`.  
+   If you opened Majsoul before starting the overlay, click **Quit Safari & reopen Majsoul** in the coach window instead (this closes all Safari tabs).
 5. When the status shows **Proxy Client** (not “Safari — open Majsoul”), join friend / practice / vs-AI and use **Why?** in the companion window.
 6. **Quit the overlay** when done — it turns Auto Proxy off. If browsing breaks after a crash, see [`proxy-trust-precautions.md`](proxy-trust-precautions.md).
 
@@ -147,10 +160,10 @@ Safari mode is **macOS only**. On other OSes, leave the setting off and use Chro
 |---------|------------|
 | No recommendations | Model not loaded — check Settings → Local `.pth`, restart after MITM/model changes |
 | Overlay blank | Overlay toggle on; play inside the app’s browser (Chromium path) |
-| Safari: no Proxy Client / no tips | Safari companion mode on + restart; cert trusted; Majsoul opened in Safari after overlay start; quit/restart if PAC failed |
+| Safari: no Proxy Client / no tips | Safari companion mode on + restart; cert trusted; Majsoul opened in Safari after overlay start; use **Quit Safari & reopen Majsoul** if you opened the game first (closes all Safari tabs); quit/restart if PAC failed |
 | Browsing broken after Safari crash | `networksetup -setautoproxystate "Wi-Fi" off` (see precautions doc) |
 | Why? greyed / “disabled” | You’re in ranked or mode is unknown — use friend / practice |
-| `shanten_sensei` import errors | Re-run `pip install -e ../shanten_sensei` inside the overlay venv |
+| `shanten_sensei` import errors | `pip install 'shanten-sensei>=0.1.0'` inside the overlay venv |
 | Generic / template Why? text | Put `OPENAI_API_KEY` or `SENSEI_API_KEY` in overlay `.env`, sibling `../shanten_sensei/.env`, or export before `python main.py`. Restart the overlay after changing keys. |
 
 ---
