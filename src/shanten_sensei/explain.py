@@ -77,6 +77,12 @@ When recommending a call that opens the hand, do not say the hand is still \
 aiming for closed-only yaku (pinfu, chiitoi / seven pairs)—cite tempo, \
 shanten, or call_tradeoff instead.
 
+Use \"open\" / \"closed\" only for called vs menzen (call tips / \
+call_tradeoff)—e.g. \"Calling would open the hand\" or \"You’re still … \
+closed\". Never write \"keeps your hand open\" / \"hand open with … improving \
+tiles\" for discard ukeire; prefer \"That leaves about N tiles that can \
+improve your hand\". Wait glosses like \"ryanmen (two-sided open)\" are fine.
+
 For riichi tips (riichi_decision true — reach vs none), lead with \
 \"Declare riichi\" / \"Stay silent\" — never \"Throw reach\" or \"Skip\". When \
 reach_discard is present, name that cut in the lead (e.g. \"Declare riichi, \
@@ -158,21 +164,21 @@ without naming those tile facts.
 Put a line break (\\n) in summary between the move/ukeire chunk and the \
 hand-state / aiming chunk when both are present. Do not use a blank line.
 
-Example discard voice: \"Throw West. That leaves about 55 tiles that can \
-improve your hand, vs about 41 if you throw 7-sou.\\nYou’re 1-shanten \
-(1 step from ready). That fits tanyao (2–8 only; no 1/9, winds, or dragons)—West \
+Example discard voice: \"Throw 🀂West. That leaves about 55 tiles that can \
+improve your hand, vs about 41 if you throw 🀖7-sou.\\nYou’re 1-shanten \
+(1 step from ready). That fits tanyao (2–8 only; no 1/9, winds, or dragons)—🀂West \
 is a floating honor outside tanyao.\"
 
-Example mid-hand voice: \"Throw 9-pin, not 5-sou. You’re 2-shanten (2 steps \
-from ready) with about 40 acceptances (tiles that improve the hand).\\n9-pin is \
+Example mid-hand voice: \"Throw 🀡9-pin, not 🀔5-sou. You’re 2-shanten (2 steps \
+from ready) with about 40 acceptances (tiles that improve the hand).\\n🀡9-pin is \
 a floating terminal outside tanyao (2–8 only; no 1/9, winds, or dragons).\"
 
-Example dead-end voice: \"Throw North.\\nNorth is a dead-end tile—it connects \
+Example dead-end voice: \"Throw 🀃North.\\n🀃North is a dead-end tile—it connects \
 to nothing useful.\"
 
-Example yakuhai voice: \"Throw 1-man, not Chun.\\nThat fits yakuhai (triplet of \
-dragon or your seat/round wind)—you’re holding a pair of East for that; 1-man \
-isn’t a value tile, while Chun can still pair.\"
+Example yakuhai voice: \"Throw 🀇1-man, not 🀄Chun.\\nThat fits yakuhai (triplet of \
+dragon or your seat/round wind)—you’re holding a pair of 🀀East for that; 🀇1-man \
+isn’t a value tile, while 🀄Chun can still pair.\"
 
 When statuses.wait_shape is set, name it with the wait_shape_glossary \
 parenthetical (e.g. \"ryanmen (two-sided open) wait\"). When statuses.furiten \
@@ -180,24 +186,24 @@ is true, name furiten_blocking_tiles if present (tiles you already discarded \
 that are also waits) and explain that ron is blocked on every wait—you can \
 only win by tsumo (self-draw).
 
-Example tenpai voice: \"Throw 4-man, not 6-man. That keeps a ryanmen \
-(two-sided open) wait.\\nYou’re furiten—you already discarded 7-sou, so you \
+Example tenpai voice: \"Throw 🀊4-man, not 🀌6-man. That keeps a ryanmen \
+(two-sided open) wait.\\nYou’re furiten—you already discarded 🀖7-sou, so you \
 can’t win on any discard (only tsumo).\"
 
-Example call voice: \"Skip the pon on 3-sou. You’re still 2-shanten (2 steps \
+Example call voice: \"Skip the pon on 🀒3-sou. You’re still 2-shanten (2 steps \
 from ready) closed with about 55 improving tiles.\\nCalling would open the \
 hand—no riichi—while you’re still aiming for tanyao (2–8 only; no 1/9, winds, \
 or dragons) and holding terminals.\"
 
-Example call (chi) voice: \"Chi 7-sou, don’t skip. You’re 1-shanten (1 step \
+Example call (chi) voice: \"Chi 🀖7-sou, don’t skip. You’re 1-shanten (1 step \
 from ready) closed with about 11 improving tiles.\\nThat gets you closer than \
 staying closed. That opens the hand—no riichi.\"
 
-Example defense voice: \"Throw 4-man, not 6-man. 4-man is suji—if someone \
-waited on the edge tiles in that suit, they'd likely have discarded 4-man \
+Example defense voice: \"Throw 🀊4-man, not 🀌6-man. 🀊4-man is suji—if someone \
+waited on the edge tiles in that suit, they'd likely have discarded 🀊4-man \
 already.\\nAn opponent is in riichi—safety matters.\"
 
-Example riichi voice: \"Declare riichi, discard 9-pin. You’re tenpai (ready) \
+Example riichi voice: \"Declare riichi, discard 🀡9-pin. You’re tenpai (ready) \
 with a ryanmen (two-sided open) wait.\\nYou have dora (bonus tile) in hand.\"
 
 Example hora voice: \"Take the win. You’re complete (winning hand).\\nYou have \
@@ -216,6 +222,7 @@ _THIN_CLAIM_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
     for p in (
         r"\bmore efficient\b",
         r"\bhigher efficiency\b",
+        r"\befficiency is worse\b",
         r"\bhigher (?:probability|chance)\b",
         r"\bkeeps? (?:your )?(?:hand )?(?:flexible|options open)\b",
         r"\bimproving your hand\b",
@@ -230,6 +237,13 @@ _CUT_NOTE_POLARITY_PATTERN = re.compile(
     r"\b(?:maintain(?:s|ing)?|keep(?:s|ing)?|preserve(?:s|ing)?)\s+"
     r"(?:a\s+|an\s+)?"
     r"(?:dead[-\s]?end|floating|isolated|closed\s+middle|kanchan|penchan|edge)\b",
+    re.IGNORECASE,
+)
+
+# Figurative "hand open" for ukeire — conflates with called (furo) hands.
+# Do not match call copy ("open the hand") or wait glosses ("two-sided open").
+_FIGURATIVE_HAND_OPEN_PATTERN = re.compile(
+    r"(?:\bkeep(?:s|ing)? (?:your )?hand open\b|\bhand open with\b)",
     re.IGNORECASE,
 )
 
@@ -856,7 +870,81 @@ def _finalize_explanation(
                 ". ".join(s.rstrip(".") for s in kept) + "." if kept else None
             )
     summary = _merge_detail_into_summary(explanation.summary, detail)
+    summary = _ensure_tile_emojis(summary, turn)
     return explanation.model_copy(update={"summary": summary, "detail": detail})
+
+
+def _tile_name_without_emoji(tile: str) -> str:
+    """English name from human_tile_label, stripping the leading mahjong glyph."""
+    label = human_tile_label(tile)
+    if label and ord(label[0]) >= 0x1F000:
+        return label[1:]
+    return label
+
+
+def _bare_tile_patterns(tile: str) -> list[str]:
+    """Regexes matching bare (no-glyph) mentions of a tile, longest first."""
+    code = normalize_tile(tile)
+    name = _tile_name_without_emoji(code)
+    patterns: list[str] = []
+    if name:
+        aka_m = re.fullmatch(r"red 5-(man|pin|sou)", name, flags=re.IGNORECASE)
+        suit_m = re.fullmatch(r"([1-9])-(man|pin|sou)", name, flags=re.IGNORECASE)
+        if aka_m:
+            suit = aka_m.group(1).lower()
+            patterns.append(rf"\bred\s+5-{suit}\b")
+            patterns.append(rf"\bred\s+5\s+{suit}\b")
+            patterns.append(rf"\bred\s+5{suit}\b")
+        elif suit_m:
+            num, suit = suit_m.group(1), suit_m.group(2).lower()
+            # Don't rewrite the "5-sou" inside an aka "red 5-sou" label.
+            red_guard = r"(?<!red )" if num == "5" else ""
+            patterns.append(rf"{red_guard}\b{num}-{suit}\b")
+            patterns.append(rf"{red_guard}\b{num}\s+{suit}\b")
+            patterns.append(rf"{red_guard}\b{num}{suit}\b")
+            patterns.append(rf"{red_guard}\b{num}{suit[0]}\b")
+        else:
+            patterns.append(rf"\b{re.escape(name)}\b")
+    patterns.append(rf"\b{re.escape(code)}\b")
+    # Dedupe while preserving order; longer aliases first.
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for pat in sorted(patterns, key=len, reverse=True):
+        if pat not in seen:
+            seen.add(pat)
+            ordered.append(pat)
+    return ordered
+
+
+def _ensure_tile_emojis(text: str, turn: TurnExplainInput) -> str:
+    """Rewrite bare tile names to emoji+name labels (e.g. 2-man → 🀈2-man)."""
+    if not text:
+        return text
+    next_best = next_best_action(turn)
+    codes = set(_tile_glossary_for_turn(turn, next_best))
+    reach_discard = (turn.features.context or {}).get("reach_discard")
+    if isinstance(reach_discard, str) and reach_discard.strip():
+        codes.add(normalize_tile(reach_discard))
+    ordered = sorted(
+        codes,
+        key=lambda c: len(human_tile_label(c)),
+        reverse=True,
+    )
+    for code in ordered:
+        label = human_tile_label(code)
+        if not label or label == code:
+            continue
+        emoji = label[0] if ord(label[0]) >= 0x1F000 else ""
+        if not emoji:
+            continue
+        for pat in _bare_tile_patterns(code):
+            text = re.sub(
+                rf"(?<!{re.escape(emoji)})(?:{pat})",
+                label,
+                text,
+                flags=re.IGNORECASE,
+            )
+    return text
 
 
 def _yakuhai_value_tiles(context: dict[str, Any] | None) -> set[str]:
@@ -1233,15 +1321,10 @@ def _danger_compare_sentences(
                 out.append(f"{best_tile} is {glossed}")
         nudge = "defense"
     elif player_tag and player != best and player_r >= best_r:
-        if player_tag in ("genbutsu", "suji", "one-chance") and player_code:
-            teaching = _danger_teaching_sentence(
-                turn, player_tag, player_code, player_tile
-            )
-            out.append(f"{teaching}, but efficiency is worse")
-        else:
-            glossed = _glossed_danger(player_tag) or player_tag
-            out.append(f"{player_tile} is {glossed} but efficiency is worse")
-        nudge = "mixed"
+        # Safer alt than Mortal's cut: omit — don't teach genbutsu/suji on the
+        # non-cut or say "efficiency is worse". Defense copy is cut-only;
+        # efficiency/shape reasons lead once defense_led stays false.
+        pass
     elif best_tag:
         if best_tag in ("genbutsu", "suji", "one-chance") and best_code:
             out.append(
@@ -2228,6 +2311,9 @@ def validate_explanation(turn: TurnExplainInput, explanation: Explanation) -> li
 
     if _CUT_NOTE_POLARITY_PATTERN.search(summary_l):
         errors.append("cut_note_polarity_inverted")
+
+    if _FIGURATIVE_HAND_OPEN_PATTERN.search(summary_l):
+        errors.append("figurative_hand_open")
 
     keep_err = _pinned_discard_keep_error(turn, summary_l)
     if keep_err:

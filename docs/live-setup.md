@@ -129,11 +129,13 @@ Confirm **Settings → Model** is `Local` and points at that file. How to obtain
 Use this if you want Majsoul in **Safari** and the coach in the Sensei window beside it (no Chromium).
 
 1. **Settings → enable “Safari companion mode (macOS; no Chromium)”** → Save. Restart the overlay when prompted (MITM / proxy settings need a restart).
-2. **Start the overlay** (`python main.py`). It starts mitm, trusts/installs the local MITM cert if needed, and applies a **Majsoul-only PAC** via `networksetup` (Wi-Fi/Ethernet). You may see a Keychain or admin prompt for the cert.
-3. **Do not** click **Start Web Client**. Arrange Safari + the companion window side by side.
-4. **Open Majsoul in Safari** (default English URL: `https://mahjongsoul.game.yo-star.com/`).
-5. When the status shows **Proxy Client**, join friend / practice / vs-AI and use **Why?** in the companion window. In-page Overlay HUD is disabled in this mode.
-6. **Quit the overlay** when done — it turns the PAC / auto-proxy off and restores your previous setting. If the app crashes and browsing looks broken, see [`proxy-trust-precautions.md`](proxy-trust-precautions.md) for manual `networksetup -setautoproxystate … off`.
+2. **Start the overlay** (`python main.py`). It starts mitm, trusts/installs the local MITM cert if needed, serves a Majsoul-only PAC at `http://127.0.0.1:{mitm_port+1}/…`, and turns on Auto Proxy via `networksetup`. You may see a Keychain or admin prompt for the cert.
+3. **Do not** click **Start Web Client**. Tips appear in the Sensei window, not inside Safari.
+4. **Fully quit Safari** (`Cmd+Q`), then reopen → `https://mahjongsoul.game.yo-star.com/`.
+5. When the status shows **Proxy Client** (not “Safari — open Majsoul”), join friend / practice / vs-AI and use **Why?** in the companion window.
+6. **Quit the overlay** when done — it turns Auto Proxy off. If browsing breaks after a crash, see [`proxy-trust-precautions.md`](proxy-trust-precautions.md).
+
+**If status never becomes Proxy Client:** turn off **iCloud Private Relay** (System Settings → Apple ID → iCloud → Private Relay) and any VPN — they can bypass the PAC. Confirm System Settings → Network → Wi-Fi → Details → Proxies shows Automatic Proxy Configuration pointing at `http://127.0.0.1:…/sensei-majsoul.pac`.
 
 Safari mode is **macOS only**. On other OSes, leave the setting off and use Chromium.
 

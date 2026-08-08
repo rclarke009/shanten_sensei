@@ -3,6 +3,8 @@
 import re
 
 from shanten_sensei.explain import (
+    _ensure_tile_emojis,
+    _finalize_explanation,
     _glossed_acceptances_phrase,
     build_detail_paragraph,
     build_user_payload,
@@ -25,6 +27,7 @@ from shanten_sensei.schema import (
     TurnExplainInput,
     UkeireInfo,
 )
+from shanten_sensei.tiles import human_tile_label
 
 
 def _turn(
@@ -391,6 +394,31 @@ def test_validate_rejects_maintains_dead_end_polarity():
     )
     errors = validate_explanation(turn, bad)
     assert "cut_note_polarity_inverted" in errors
+
+
+def test_validate_rejects_figurative_hand_open():
+    """ukeire flexibility must not be phrased as an open (called) hand."""
+    turn = _turn(
+        mortal_best="dahai 8s",
+        player_action="dahai 8s",
+        diverge=False,
+        ukeire=UkeireInfo(
+            count=8, tiles=["4p", "7p", "7m"], remaining_by_tile={"4p": 3, "7p": 3, "7m": 2}
+        ),
+        shape_goals=["yakuhai", "chiitoi"],
+    )
+    bad = Explanation(
+        summary=(
+            "Throw 8-sou. That keeps your hand open with about 8 tiles that can "
+            "improve it. You're 1-shanten (1 step from ready) and aiming for "
+            "yakuhai (triplet of dragon or your seat/round wind) with a pair of Chun."
+        ),
+        focus="efficiency",
+        pinned_action="dahai 8s",
+        contrasted_action=None,
+    )
+    errors = validate_explanation(turn, bad)
+    assert "figurative_hand_open" in errors
 
 
 def test_validate_rejects_keeps_floating_terminal_polarity():
@@ -940,6 +968,48 @@ def test_grounding_accepts_correct_genbutsu_on_best_cut():
     assert validate_explanation(turn, good) == []
 
 
+def test_screenshot_thin_efficiency_is_worse():
+    """Vague 'efficiency is worse' with no anchors is a thin claim."""
+    turn = _turn(mortal_best="dahai 3p", player_action="dahai P")
+    summary = "Throw 3-pin, not Haku, but efficiency is worse."
+    score = score_explanation_substance(turn, summary)
+    assert score.thin is True
+    assert "thin_efficiency_claim" in score.issues
+    assert "thin_efficiency_claim" in validate_explanation(
+        turn,
+        Explanation(
+            summary=summary,
+            focus="mixed",
+            pinned_action="dahai 3p",
+            contrasted_action="dahai P",
+        ),
+    )
+
+
+def test_template_omits_safer_alt_genbutsu_efficiency_worse():
+    """Screenshot shape: Mortal picks efficiency over safer genbutsu alt.
+
+    Do not teach genbutsu on the non-cut or say 'efficiency is worse'.
+    """
+    turn = _turn(
+        diverge=True,
+        mortal_best="dahai 3p",
+        player_action="dahai P",
+        danger={"P": "genbutsu"},
+    )
+    turn.game_state.visible_discards = {"1": ["P"]}
+    turn.features.danger_detail = {"P": {"tag": "genbutsu", "seats": ["1"]}}
+    result = template_explain(turn)
+    summary_l = result.summary.lower()
+    assert "efficiency is worse" not in summary_l
+    assert "already discarded" not in summary_l
+    assert "can't ron" not in summary_l and "cant ron" not in summary_l
+    assert summary_l.startswith("throw")
+    assert "3-pin" in summary_l
+    assert "haku" in summary_l
+    assert validate_explanation(turn, result) == []
+
+
 def test_template_genbutsu_teaching_voice():
     turn = _turn(
         diverge=True,
@@ -955,6 +1025,7 @@ def test_template_genbutsu_teaching_voice():
     assert "can't ron" in summary_l or "cant ron" in summary_l
     assert "2-man" in summary_l
     assert "opponent" in summary_l
+    assert "efficiency is worse" not in summary_l
     score = score_explanation_substance(turn, result.summary)
     assert "danger" in score.anchors
     assert validate_explanation(turn, result) == []
@@ -1317,3 +1388,84 @@ def test_summary_word_limit_allows_longer_coaching():
         pinned_action="dahai 3p",
     )
     assert "summary exceeds length budget" in validate_explanation(turn, too_long)
+
+
+def test_ensure_tile_emojis_rewrites_bare_suit_name():
+    turn = _turn(mortal_best="dahai 2m", player_action="dahai 1s")
+    out = _ensure_tile_emojis(
+        "Throw 2-man. That keeps your options open with about 9 tiles.",
+        turn,
+    )
+    assert human_tile_label("2m") in out
+    assert out.startswith(f"Throw {human_tile_label('2m')}")
+
+
+def test_ensure_tile_emojis_idempotent_when_already_glyphed():
+    turn = _turn(mortal_best="dahai 2m", player_action="dahai 1s")
+    label = human_tile_label("2m")
+    already = f"Throw {label}. Keep options open."
+    assert _ensure_tile_emojis(already, turn) == already
+    assert _ensure_tile_emojis(already, turn).count(label) == 1
+
+
+def test_ensure_tile_emojis_honor_and_aka():
+    turn = TurnExplainInput(
+        game_state=GameState(
+            hand=[
+                "5sr",
+                "5s",
+                "W",
+                "2m",
+                "3m",
+                "7m",
+                "3p",
+                "6p",
+                "7p",
+                "1s",
+                "3s",
+                "8s",
+                "8s",
+            ]
+        ),
+        mortal_output=MortalOutput(
+            recommended="dahai W",
+            candidates=[
+                MortalCandidate(action="dahai W", prob=0.7),
+                MortalCandidate(action="dahai 5sr", prob=0.2),
+            ],
+        ),
+        features=DerivedFeatures(
+            shanten=2,
+            ukeire=UkeireInfo(count=20, tiles=["2p", "5s"]),
+            statuses=HandStatuses(shanten=2),
+        ),
+        player_action="dahai 5sr",
+        mortal_best="dahai W",
+        diverge=True,
+    )
+    out = _ensure_tile_emojis(
+        "Throw West, not red 5-sou. West is a floating honor.",
+        turn,
+    )
+    assert human_tile_label("W") in out
+    assert human_tile_label("5sr") in out
+    assert "🀔red 🀔5-sou" not in out
+    assert "Throw West" not in out
+    assert "not red 5-sou" not in out
+
+
+def test_finalize_injects_glyphs_into_bare_llm_summary():
+    turn = _turn(mortal_best="dahai 2m", player_action="dahai 1s", diverge=False)
+    result = _finalize_explanation(
+        turn,
+        Explanation(
+            summary=(
+                "Throw 2-man. That keeps your options open with about 9 tiles "
+                "that can improve your hand."
+            ),
+            focus="efficiency",
+            pinned_action="dahai 2m",
+        ),
+    )
+    assert human_tile_label("2m") in result.summary
+    assert result.summary.startswith(f"Throw {human_tile_label('2m')}")

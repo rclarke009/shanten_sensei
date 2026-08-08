@@ -106,10 +106,10 @@ def test_template_skip_vs_pon_tanyao_voice():
     assert "Skip" in result.summary
     assert "pon" in result.summary.lower()
     assert "riichi" in result.summary.lower() or "open" in result.summary.lower()
+    assert "open the hand" in result.summary.lower() or "closed with" in result.summary.lower()
     assert "tanyao" in result.summary.lower()
     assert "terminal" in result.summary.lower()
     assert validate_explanation(turn, result) == []
-
 
 def test_pon_simulation_opens_hand():
     hand = ["1m", "3m", "5m", "6m", "6m", "8m", "4p", "8p", "9p", "W", "W", "N", "P"]
