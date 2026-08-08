@@ -287,7 +287,7 @@ def test_wall_note_thin_remaining():
     )
     note = wall_note(turn)
     assert note is not None
-    assert "already out" in note or "1×" in note or "1x" in note
+    assert "still unseen" in note or "already out" in note
     assert "4-sou" in note.lower() or "4s" in note
 
 
@@ -410,6 +410,54 @@ def test_template_dead_end_is_cut_reason_not_keep():
         turn, result.summary
     ).anchors
     assert validate_explanation(turn, result) == []
+
+
+def test_template_dora_keep_separate_from_dead_end_cut():
+    """Dora-keep and cut dead-end must not read as one dash-linked sentence."""
+    turn = _turn(
+        mortal_best="dahai 9m",
+        player_action="dahai N",
+        diverge=True,
+        dora_in_hand=["5pr"],
+        ukeire=UkeireInfo(count=96, tiles=["2m", "3m"]),
+    )
+    turn.features.shanten = 5
+    turn.features.statuses.shanten = 5
+    turn.features.hand_shape_notes = [HandShapeNote(kind="dead_end", tile="9m")]
+    result = template_explain(turn)
+    summary_l = result.summary.lower()
+    assert "keeping" in summary_l and "dora" in summary_l
+    assert "is a dead-end tile" in result.summary
+    assert not re.search(
+        r"keeping dora[^.\n]*—[^.\n]*dead-end",
+        result.summary,
+        re.I,
+    )
+
+
+def test_template_dora_keep_and_dead_end_on_separate_lines():
+    """Screenshot-shaped: dora-keep and cut reason on separate lines; no gloss echo."""
+    turn = _turn(
+        mortal_best="dahai 1s",
+        player_action="dahai S",
+        diverge=True,
+        dora_in_hand=["5pr"],
+        ukeire=UkeireInfo(count=91, tiles=["2m", "3m"], remaining_by_tile={"7z": 1}),
+    )
+    turn.features.shanten = 5
+    turn.features.statuses.shanten = 5
+    turn.features.hand_shape_notes = [HandShapeNote(kind="dead_end", tile="1s")]
+    result = template_explain(turn)
+    lines = result.summary.split("\n")
+    assert len(lines) == 3
+    assert lines[0].startswith("Throw")
+    assert "ukeire" in lines[0].lower()
+    assert lines[1].startswith("Keeping dora")
+    assert "red 5-pin" in lines[1]
+    assert "is a dead-end tile" in lines[2]
+    assert "1-sou" in lines[2].lower() or "1s" in lines[2].lower()
+    assert "connects to nothing useful" not in result.summary.lower()
+    assert result.detail and "connects to nothing useful" in result.detail.lower()
 
 
 def test_validate_rejects_maintains_dead_end_polarity():
@@ -679,7 +727,7 @@ def test_template_mentions_wall_depletion():
         ),
     )
     result = template_explain(turn)
-    assert "already out" in result.summary or "1×" in result.summary
+    assert "still unseen" in result.summary or "already out" in result.summary
     score = score_explanation_substance(turn, result.summary)
     assert score.thin is False
     assert "ukeire" in score.anchors
@@ -694,8 +742,8 @@ def test_depletion_language_anchors_ukeire():
         ),
     )
     summary = (
-        "Throw 3-pin. Several improving tiles are already out "
-        "(only 1× 4-sou left)."
+        "Throw 3-pin. Few copies left of tiles you need "
+        "(only 1 copy of 4-sou is still unseen)."
     )
     score = score_explanation_substance(turn, summary)
     assert score.thin is False
@@ -980,7 +1028,8 @@ def test_merge_skips_mortal_cut_ukeire_when_glossed_ukeire_phrase():
     summary = (
         "Throw 1-pin, not 9-man. You're 4-shanten with about 58 ukeire "
         "(tiles that improve the hand).\n"
-        "Keeping dora — 1-pin is a dead-end tile."
+        "Keeping dora red 5-pin.\n"
+        "1-pin is a dead-end tile."
     )
     detail = (
         "Mortal's cut leaves about 58 improving tiles vs about 56 on the "
@@ -990,7 +1039,8 @@ def test_merge_skips_mortal_cut_ukeire_when_glossed_ukeire_phrase():
     merged_l = merged.lower()
     assert "mortal" not in merged_l
     assert "leaves about 58 improving tiles" not in merged_l
-    assert "connects to nothing useful" in merged_l
+    assert "connects to nothing useful" not in merged_l
+    assert merged == summary
 
 
 def test_template_defense_multi_danger_cut_only():
@@ -1097,7 +1147,7 @@ def test_template_false_safer_tip_turn_stays_grounded():
     result = template_explain(turn)
     summary_l = result.summary.lower()
     assert "2-pin" in summary_l or "2p" in summary_l
-    assert "thinning" in summary_l or "only 1" in summary_l
+    assert "still unseen" in summary_l or "already out" in summary_l
     assert "already discarded" in summary_l
     assert "can't ron" in summary_l or "cant ron" in summary_l
     assert "2-man" in summary_l or "2m" in summary_l
@@ -1121,7 +1171,7 @@ def test_grounding_accepts_correct_genbutsu_on_best_cut():
         summary=(
             "Throw 2-man, not 1-sou. You’re 2-shanten (2 steps from ready) with "
             "about 12 ukeire (tiles that improve the hand).\n"
-            "Improving tiles are thinning (only 1× 2-pin left). "
+            "Only 1 copy of 2-pin is still unseen. "
             "An opponent already discarded 2-man, so they can't ron it from you."
         ),
         focus="defense",
@@ -1129,6 +1179,27 @@ def test_grounding_accepts_correct_genbutsu_on_best_cut():
         contrasted_action="dahai 1s",
     )
     assert validate_explanation(turn, good) == []
+
+
+def test_validate_rejects_wall_jargon():
+    turn = _turn(
+        ukeire=UkeireInfo(
+            count=4,
+            tiles=["4s"],
+            remaining_by_tile={"4s": 1},
+        ),
+    )
+    bad = Explanation(
+        summary=(
+            "Throw 3-pin. Calling would open the hand given the thinning wall "
+            "(only 1 red 5-pin left)."
+        ),
+        focus="efficiency",
+        pinned_action="dahai 3p",
+        contrasted_action="dahai 5m",
+    )
+    errors = validate_explanation(turn, bad)
+    assert any("ambiguous wall/thinning jargon" in e for e in errors)
 
 
 def test_screenshot_thin_efficiency_is_worse():

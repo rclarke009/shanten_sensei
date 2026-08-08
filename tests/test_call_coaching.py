@@ -20,7 +20,7 @@ from shanten_sensei.live import (
     turn_from_live,
     unify_call_candidates,
 )
-from shanten_sensei.schema import Explanation, MortalCandidate
+from shanten_sensei.schema import Explanation, MortalCandidate, UkeireInfo
 from shanten_sensei.tiles import coach_action_label
 
 FIXTURES_ROOT = Path(__file__).resolve().parents[1] / "fixtures"
@@ -110,6 +110,28 @@ def test_template_skip_vs_pon_tanyao_voice():
     assert "tanyao" in result.summary.lower()
     assert "terminal" in result.summary.lower()
     assert validate_explanation(turn, result) == []
+
+
+def test_template_skip_includes_unseen_copy_note():
+    turn = turn_from_live(
+        hand=SKIP_PON_HAND,
+        recommended="none",
+        candidates=candidates_from_meta_options([("none", 0.99), ("pon", 0.01)]),
+        call_tile="3s",
+        visible_discards={"2": ["3s"]},
+    )
+    turn.features.shanten = 5
+    turn.features.ukeire = UkeireInfo(
+        count=91,
+        tiles=["5pr", "5p"],
+        remaining_by_tile={"5pr": 1, "5p": 3},
+    )
+    result = template_explain(turn)
+    summary_l = result.summary.lower()
+    assert "skip" in summary_l
+    assert "still unseen" in summary_l or "already out" in summary_l
+    assert validate_explanation(turn, result) == []
+
 
 def test_pon_simulation_opens_hand():
     hand = ["1m", "3m", "5m", "6m", "6m", "8m", "4p", "8p", "9p", "W", "W", "N", "P"]

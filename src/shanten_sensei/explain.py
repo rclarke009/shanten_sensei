@@ -71,7 +71,8 @@ Never open with "Mortal recommends" or \
 5s when naming tiles for the player. Never recommend an action other than \
 mortal_best. Never write \"Mortal’s cut is …\" or \"Target: …\". Do not restate \
 bare shanten / improving-tile counts unless citing a contrast \
-(\"about N … vs about M if you throw …\") or wall thinning.
+(\"about N … vs about M if you throw …\") or a scarce-copy fact from \
+wall_note (e.g. \"only 1 copy of red 5-pin is still unseen\").
 
 For discard tips, lead with \"Throw X\" or \"Throw X, not Y\" using \
 tile_glossary / coach_action labels (e.g. 🀅Hatsu, 🀔5-sou).
@@ -118,8 +119,8 @@ discarded it; otherwise say \"an opponent.\" Genbutsu / \"already discarded\" / 
 \"already been played\" / \"can't ron\" must name the danger-tagged tile \
 (usually mortal_best)—never the alternate cut unless that alternate is also \
 tagged genbutsu. When score_situation is present, you may \
-add one short point-situation line (opponent riichi, leading/trailing/even, late \
-wall).
+add one short point-situation line (opponent riichi, leading/trailing/even, \
+few tiles left to draw).
 
 Do not justify Mortal by restating its probability percentages or by saying \
 \"more efficient\" / \"higher chance\" alone. Prefer one concrete fact from the \
@@ -145,9 +146,12 @@ You may cite ukeire.remaining_by_tile or ukeire_alt for visible wall depletion \
 or improving-tile contrast (e.g. tiles already out; about N improving tiles \
 left vs about M if you throw the alternate). Prefer wall_note facts when \
 present, rephrased in the same plain voice — do not paste jargon like \
-\"live acceptances\". Wall thinning like \"only N× tile left\" / \"already out\" \
-is about remaining copies of improving tiles, not the alternate cut’s \
-acceptance count—never rewrite it as \"N improving tiles if you throw …\". \
+\"live acceptances\", \"thinning wall\", \"thin wall\", \"improving tiles are \
+thinning\", or \"left in the wall\". Use copy-specific unseen language instead: \
+\"only 1 copy of {tile} is still unseen\", \"only N× {tile} still unseen\", \
+\"{tile} is already out\", or \"few copies left of tiles you need (…)\". These \
+facts are about remaining unseen copies of improving tiles, not the alternate \
+cut’s acceptance count—never rewrite them as \"N improving tiles if you throw …\". \
 Only invent an improving-tile vs/if-you-throw contrast when wall_note is already \
 that contrast form (\"about N … vs about M if you throw …\"). Never invent \
 unseen wall math, opponent-hand contents, or discard reasons not supported by \
@@ -333,8 +337,9 @@ class SubstanceScore:
 
 
 def _wall_facts_available(turn: TurnExplainInput) -> bool:
-    remaining = turn.features.ukeire.remaining_by_tile
-    if remaining and any(n <= 1 for n in remaining.values()):
+    ukeire = turn.features.ukeire
+    remaining = ukeire.remaining_by_tile
+    if remaining and any(remaining.get(t, 0) <= 1 for t in ukeire.tiles):
         return True
     alt = turn.features.ukeire_alt
     if alt is not None and turn.features.ukeire.count - alt.count >= 3:
@@ -373,10 +378,11 @@ def _feature_anchors_in_summary(turn: TurnExplainInput, summary_l: str) -> list[
         anchors.append("shanten")
     wall_lang = bool(
         re.search(r"\balready out\b", summary_l)
-        or re.search(r"\bleft in the wall\b", summary_l)
+        or re.search(r"\bstill unseen\b", summary_l)
         or re.search(r"\blive acceptances?\b", summary_l)
         or re.search(r"\bimproving tiles\b", summary_l)
         or re.search(r"\b\d+\s*[×x]\b", summary_l)
+        or re.search(r"\bfew copies left of tiles you need\b", summary_l)
     )
     if (
         re.search(r"\bacceptances?\b", summary_l)
@@ -474,11 +480,20 @@ def score_explanation_substance(turn: TurnExplainInput, summary: str) -> Substan
     return SubstanceScore(thin=thin, anchors=anchors, issues=issues)
 
 
+def _unseen_copy_phrase(label: str, copies: int) -> str:
+    """How many unseen copies of a useful tile remain (not draw-pile depletion)."""
+    if copies <= 0:
+        return f"{label} is already out"
+    if copies == 1:
+        return f"only 1 copy of {label} is still unseen"
+    return f"only {copies}× {label} still unseen"
+
+
 def _wall_note_detail(turn: TurnExplainInput) -> tuple[str | None, str | None]:
     """Return (kind, text): kind is 'contrast' | 'thin', or (None, None)."""
     ukeire = turn.features.ukeire
     remaining = ukeire.remaining_by_tile
-    thin = [(t, n) for t, n in remaining.items() if n <= 1]
+    thin = [(t, n) for t, n in remaining.items() if n <= 1 and t in ukeire.tiles]
     alt = turn.features.ukeire_alt
 
     if alt is not None and ukeire.count - alt.count >= 3:
@@ -499,10 +514,10 @@ def _wall_note_detail(turn: TurnExplainInput) -> tuple[str | None, str | None]:
         thin.sort(key=lambda x: (x[1], x[0]))
         tile, n = thin[0]
         label = human_tile_label(tile)
-        detail = f"{label} already out" if n <= 0 else f"only {n}× {label} left"
+        detail = _unseen_copy_phrase(label, n)
         if len(thin) >= 2:
-            return "thin", f"several improving tiles are already out ({detail})"
-        return "thin", f"improving tiles are thinning ({detail})"
+            return "thin", f"few copies left of tiles you need ({detail})"
+        return "thin", detail
 
     return None, None
 
@@ -800,7 +815,7 @@ def _named_improving_tiles_sentence(turn: TurnExplainInput) -> str | None:
 
 
 def _thin_wall_sentence(turn: TurnExplainInput) -> str | None:
-    """Thin-wall note when key improving tiles are nearly exhausted."""
+    """Unseen-copy note when key improving tiles are nearly exhausted."""
     ukeire = turn.features.ukeire
     remaining = ukeire.remaining_by_tile
     thin_in_ukeire = [
@@ -811,10 +826,10 @@ def _thin_wall_sentence(turn: TurnExplainInput) -> str | None:
     thin_in_ukeire.sort(key=lambda x: (x[1], x[0]))
     tile, n = thin_in_ukeire[0]
     label = human_tile_label(tile)
-    detail = f"{label} already out" if n <= 0 else f"only {n}× {label} left"
+    detail = _unseen_copy_phrase(label, n)
     if len(thin_in_ukeire) >= 2:
-        return f"Several improving tiles are already out ({detail})"
-    return f"Improving tiles are thinning ({detail})"
+        return f"Few copies left of tiles you need ({detail})"
+    return detail
 
 
 _UKEIRE_CITED_IN_SUMMARY_RE = re.compile(
@@ -823,6 +838,40 @@ _UKEIRE_CITED_IN_SUMMARY_RE = re.compile(
     r"tiles that improve(?:\s+(?:the|your)\s+hand)?)\b",
     re.IGNORECASE,
 )
+
+# Detail gloss → summary phrase that already teaches the same cut note.
+_SHAPE_GLOSS_REDUNDANT_IF: dict[str, str] = {
+    "connects to nothing useful": r"is a dead-end tile",
+    "dead_end": r"is a dead-end tile",
+    "lone 1/9 with no connector": r"floating terminal",
+    "floating_terminal": r"floating terminal",
+    "lone wind or dragon": r"floating honor",
+    "floating_honor": r"floating honor",
+    "closed middle fragment": r"closed middle|kanchan",
+    "isolated_kanchan": r"closed middle|kanchan",
+    "edge wait fragment": r"edge \(penchan\)|penchan",
+    "isolated_penchan": r"edge \(penchan\)|penchan",
+}
+
+
+def _label_without_emoji(label: str) -> str:
+    label = label.strip()
+    if label and ord(label[0]) >= 0x1F000:
+        return label[1:].strip()
+    return label
+
+
+def _detail_shape_gloss_redundant(chunk: str, summary_l: str) -> bool:
+    """True when summary already teaches the cut note this gloss restates."""
+    if " — " not in chunk:
+        return False
+    tile_raw, gloss_raw = chunk.split(" — ", 1)
+    tile_key = _label_without_emoji(tile_raw).lower()
+    gloss_key = gloss_raw.strip().lower().rstrip(".")
+    phrase_re = _SHAPE_GLOSS_REDUNDANT_IF.get(gloss_key)
+    if not phrase_re or not re.search(phrase_re, summary_l):
+        return False
+    return tile_key in summary_l or tile_raw.strip().lower() in summary_l
 
 
 def _merge_detail_into_summary(summary: str, detail: str | None) -> str:
@@ -867,6 +916,8 @@ def _merge_detail_into_summary(summary: str, detail: str | None) -> str:
         if any(g in chunk_l for g in goal_tokens) and any(
             g in summary_l for g in goal_tokens
         ):
+            continue
+        if _detail_shape_gloss_redundant(chunk, summary_l):
             continue
         extras.append(chunk)
     if not extras:
@@ -966,7 +1017,7 @@ def build_detail_paragraph(turn: TurnExplainInput) -> str | None:
             if ss.score_diff:
                 score_bits.append(f"you’re {ss.score_diff} on points")
             if ss.late_game:
-                score_bits.append("late game / thin wall")
+                score_bits.append("late game — few tiles left to draw")
             if score_bits:
                 bits.append("; ".join(score_bits))
 
@@ -1580,6 +1631,9 @@ def _template_explain_call(turn: TurnExplainInput) -> Explanation:
                     state_sents.append(f"That {goal_bit}")
                 else:
                     state_sents.append(_sentence_case(goal_bit))
+        note_kind, note = _wall_note_detail(turn)
+        if note_kind == "thin" and note:
+            state_sents.append(_sentence_case(note))
     else:
         tile = action_tile_arg(best)
         dragons = frozenset({"P", "F", "C"})
@@ -1703,7 +1757,7 @@ def _template_explain_riichi(turn: TurnExplainInput) -> Explanation:
         and tiles_left <= 30
         and not furiten_bit
     ):
-        state_sents.append("The wall is getting thin")
+        state_sents.append("Few tiles left to draw")
 
     focus = _append_score_situation(state_sents, focus, turn)
 
@@ -1839,7 +1893,7 @@ def _template_explain_body(turn: TurnExplainInput) -> Explanation:
 
     thin_extra = _thin_wall_sentence(turn)
     if thin_extra and not any(
-        "thinning" in s.lower() or "already out" in s.lower() for s in move_sents
+        "still unseen" in s.lower() or "already out" in s.lower() for s in move_sents
     ):
         move_sents.append(thin_extra)
 
@@ -1885,8 +1939,10 @@ def _template_explain_body(turn: TurnExplainInput) -> Explanation:
         if midhand_bit and (
             "floating" in midhand_bit or "dead-end" in midhand_bit
         ):
-            shape_sentence += f"—{midhand_bit}"
-            midhand_bit = None
+            # Dora-keep vs cut-reason are opposite polarities — don't dash-glue.
+            if not goal_bit.startswith("keeping"):
+                shape_sentence += f"—{midhand_bit}"
+                midhand_bit = None
         elif (
             "tanyao" in turn.features.shape_goals
             and best_raw
@@ -1906,7 +1962,17 @@ def _template_explain_body(turn: TurnExplainInput) -> Explanation:
             ):
                 focus = "value"
     if midhand_bit and not defense_led:
-        state_sents.append(_sentence_case(midhand_bit))
+        if (
+            goal_bit
+            and goal_bit.startswith("keeping")
+            and state_sents
+            and ("floating" in midhand_bit or "dead-end" in midhand_bit)
+        ):
+            state_sents[-1] = (
+                f"{state_sents[-1]}\n{_sentence_case(midhand_bit)}"
+            )
+        else:
+            state_sents.append(_sentence_case(midhand_bit))
 
     furiten_bit = _furiten_because_sentence(turn)
     if furiten_bit:
@@ -2432,6 +2498,24 @@ def _action_lead_polarity_error(
     return None
 
 
+_WALL_JARGON_RE = re.compile(
+    r"\b(?:thinning wall|thin wall|improving tiles are thinning|left in the wall)\b",
+    re.IGNORECASE,
+)
+
+
+def _wall_jargon_error(summary_l: str) -> str | None:
+    """Reject ambiguous draw-pile / thinning jargon for unseen-copy facts."""
+    if _WALL_JARGON_RE.search(summary_l):
+        return "summary uses ambiguous wall/thinning jargon"
+    if re.search(r"\bthinning\b", summary_l) and not (
+        re.search(r"\bstill unseen\b", summary_l)
+        or re.search(r"\balready out\b", summary_l)
+    ):
+        return "summary uses ambiguous wall/thinning jargon"
+    return None
+
+
 def validate_explanation(turn: TurnExplainInput, explanation: Explanation) -> list[str]:
     """Return list of grounding violations (empty = ok)."""
     errors: list[str] = []
@@ -2525,6 +2609,10 @@ def validate_explanation(turn: TurnExplainInput, explanation: Explanation) -> li
     ukeire_err = _false_ukeire_contrast_error(turn, summary_l)
     if ukeire_err:
         errors.append(ukeire_err)
+
+    wall_jargon_err = _wall_jargon_error(summary_l)
+    if wall_jargon_err:
+        errors.append(wall_jargon_err)
 
     substance = score_explanation_substance(turn, explanation.summary)
     if substance.thin:
