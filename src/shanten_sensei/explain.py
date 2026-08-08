@@ -44,7 +44,7 @@ from shanten_sensei.tiles import (
 )
 
 ALLOWED_FOCUS = frozenset({"efficiency", "defense", "value", "tempo", "mixed"})
-SUMMARY_WORD_LIMIT = 130
+SUMMARY_WORD_LIMIT = 90
 
 SYSTEM_PROMPT = """\
 You are a beginner-friendly riichi mahjong coach. You explain Mortal’s \
@@ -52,14 +52,16 @@ recommendation using only the game state, Mortal scores, and derived features \
 provided. You do not invent better moves. If the player’s move differs, say why \
 Mortal’s choice is better in efficiency, safety, or point situation. If this is \
 a live pre-decision turn (diverge is false / player_action equals mortal_best), \
-explain why Mortal’s top pick beats the next-best candidate. Write three or four \
+explain why Mortal’s top pick beats the next-best candidate. Write two or three \
 short sentences in plain English: (1) the action, (2) the main reason—efficiency, \
-defense, or value, (3) a secondary grounded fact—shape, call tradeoff, or wall \
-detail, and (4) optional point situation or furiten when present. Never open with \
-"Mortal recommends" or \
+defense, or value, and (3) optional secondary grounded fact—shape, call \
+tradeoff, wall contrast, point situation, or furiten when it justifies the pick. \
+Never open with "Mortal recommends" or \
 "Mortal prefers". Never use bare honor letters F/C/P or bare suit codes like \
 5s when naming tiles for the player. Never recommend an action other than \
-mortal_best.
+mortal_best. Never write \"Mortal’s cut is …\" or \"Target: …\". Do not restate \
+bare shanten / improving-tile counts unless citing a contrast \
+(\"about N … vs about M if you throw …\") or wall thinning.
 
 For discard tips, lead with \"Throw X\" or \"Throw X, not Y\" using \
 tile_glossary / coach_action labels (e.g. 🀅Hatsu, 🀔5-sou).
@@ -87,11 +89,12 @@ say the hand is complete / a winning hand, not tenpai (ready). Do not invent \
 yaku aims for a finished hand.
 
 When danger tags a safer cut (genbutsu / suji / one-chance with \
-danger_glossary parentheticals), prefer a defense sentence over bare \
-efficiency. When danger is genbutsu, explain the rule: an opponent already \
-discarded that tile, so they can't ron it from you — not jargon alone. For \
-suji, explain that edge waits in that suit likely already discarded this tile. \
-For one-chance, explain that the middle tile is nearly all out. You may \
+danger_glossary parentheticals), prefer one defense sentence about \
+mortal_best only—never catalogue other hand tiles’ genbutsu / suji / \
+one-chance tags. When danger is genbutsu, explain the rule: an opponent \
+already discarded that tile, so they can't ron it from you — not jargon alone. \
+For suji, explain that edge waits in that suit likely already discarded this \
+tile. For one-chance, explain that the middle tile is nearly all out. You may \
 say \"the riichi player\" only when danger_detail seats show a riichi opponent \
 discarded it; otherwise say \"an opponent.\" Genbutsu / \"already discarded\" / \
 \"already been played\" / \"can't ron\" must name the danger-tagged tile \
@@ -114,7 +117,9 @@ named in those notes, e.g. \"North is a dead-end tile\", \
 alternate cut or another hand tile; never write \"kanchan/penchan/fragment on \
 {tile}\" — that sounds like a wait; if naming both ends say \"6–8 kanchan\", never \
 \"kanchan on 8-man\"; never say you keep / maintain / preserve a dead-end, \
-floating, or isolated shape), \
+floating, or isolated shape; never say \"better to keep it\" / \"keep it for \
+now\" or that you should keep the recommended cut tile—cut notes justify \
+throwing that tile), \
 furiten_blocking_tiles, call_tradeoff, danger, score_situation, or dora. The \
 chart already shows Mortal % — leave percentages out of the summary.
 
@@ -188,8 +193,9 @@ Example call (chi) voice: \"Chi 7-sou, don’t skip. You’re 1-shanten (1 step 
 from ready) closed with about 11 improving tiles.\\nThat gets you closer than \
 staying closed. That opens the hand—no riichi.\"
 
-Example defense voice: \"Throw 4-man, not 6-man—it's suji (interval-safe vs a \
-common wait). 6-man isn't.\\nAn opponent is in riichi—safety matters.\"
+Example defense voice: \"Throw 4-man, not 6-man. 4-man is suji—if someone \
+waited on the edge tiles in that suit, they'd likely have discarded 4-man \
+already.\\nAn opponent is in riichi—safety matters.\"
 
 Example riichi voice: \"Declare riichi, discard 9-pin. You’re tenpai (ready) \
 with a ryanmen (two-sided open) wait.\\nYou have dora (bonus tile) in hand.\"
@@ -198,7 +204,7 @@ Example hora voice: \"Take the win. You’re complete (winning hand).\\nYou have
 dora (bonus tile) in hand.\"
 
 Return JSON with exactly these keys:
-- summary: string (1–2 short paragraphs of coach text; use \\n between move/ukeire and state/aiming when both appear)
+- summary: string (two or three short sentences; use \\n between move and state when both appear)
 - focus: one of "efficiency", "defense", "value", "tempo", "mixed" (enum only, never prose)
 - pinned_action: must equal mortal_best
 - contrasted_action: player's action when it differs; else next-best candidate; else null
@@ -224,6 +230,12 @@ _CUT_NOTE_POLARITY_PATTERN = re.compile(
     r"\b(?:maintain(?:s|ing)?|keep(?:s|ing)?|preserve(?:s|ing)?)\s+"
     r"(?:a\s+|an\s+)?"
     r"(?:dead[-\s]?end|floating|isolated|closed\s+middle|kanchan|penchan|edge)\b",
+    re.IGNORECASE,
+)
+
+# Throw X then "keep it" / "better to keep" — pronoun or vague keep of the cut.
+_PINNED_CUT_KEEP_IT_PATTERN = re.compile(
+    r"\b(?:(?:still\s+)?better\s+to\s+keep|keep(?:s|ing)?\s+it(?:\s+for\s+now)?)\b",
     re.IGNORECASE,
 )
 
@@ -710,15 +722,45 @@ def _merge_detail_into_summary(summary: str, detail: str | None) -> str:
     if not detail:
         return summary
     summary_l = summary.lower()
+    has_defense = bool(
+        re.search(
+            r"\b(?:genbutsu|suji|one-chance|already discarded|can't ron|cant ron)\b",
+            summary_l,
+        )
+    )
+    has_ukeire = bool(
+        re.search(r"\b(?:improving tiles?|acceptances?)\b", summary_l)
+    )
     extras: list[str] = []
     for chunk in detail.rstrip(".").split(". "):
         chunk = chunk.strip()
         if not chunk:
             continue
-        if chunk.lower() in summary_l:
+        chunk_l = chunk.lower()
+        if chunk_l in summary_l:
             continue
         probe = chunk[:40].lower()
         if probe in summary_l:
+            continue
+        # Don't restate Mortal's pick or echo Hand-stats metrics onto defense tips.
+        if re.search(r"\bmortal['\u2019]?s cut\b", chunk_l) and (
+            has_defense or has_ukeire
+        ):
+            continue
+        if re.search(
+            r"\bis (?:genbutsu|suji|one-chance)\b",
+            chunk_l,
+        ) and has_defense:
+            continue
+        if has_ukeire and re.search(r"\bimproving tiles?\b", chunk_l):
+            continue
+        # Skip goal/shape leftovers already named in summary.
+        if chunk_l.startswith("target:"):
+            continue
+        goal_tokens = ("tanyao", "pinfu", "yakuhai", "chiitoi", "honitsu", "chinitsu")
+        if any(g in chunk_l for g in goal_tokens) and any(
+            g in summary_l for g in goal_tokens
+        ):
             continue
         extras.append(chunk)
     if not extras:
@@ -727,6 +769,94 @@ def _merge_detail_into_summary(summary: str, detail: str | None) -> str:
     if "\n" in summary:
         return f"{summary}\n{merged}"
     return f"{summary}\n{merged}"
+
+
+def build_detail_paragraph(turn: TurnExplainInput) -> str | None:
+    """One extra grounded paragraph for the second-click deeper Why? path."""
+    bits: list[str] = []
+
+    ukeire = turn.features.ukeire
+    alt = turn.features.ukeire_alt
+    if alt is not None and ukeire.count != alt.count:
+        bits.append(
+            f"Mortal’s cut leaves about {ukeire.count} improving tiles "
+            f"vs about {alt.count} on the alternative"
+        )
+
+    statuses = turn.features.statuses
+    if statuses.tenpai and ukeire.tiles:
+        labels = ", ".join(human_tile_label(t) for t in ukeire.tiles[:6])
+        wait_label = _glossed_wait(statuses.wait_shape)
+        if wait_label:
+            bits.append(f"Waiting on {labels} ({wait_label})")
+        else:
+            bits.append(f"Waiting on {labels}")
+
+    # Cut-only danger — never catalogue other hand tiles' tags.
+    best_code = _danger_key(_action_tile_token_raw(turn.mortal_best))
+    danger = turn.features.danger
+    if best_code and best_code in danger:
+        tag = danger[best_code]
+        glossed = _glossed_danger(tag) or tag
+        bits.append(f"{human_tile_label(best_code)} is {glossed}")
+
+    for note in turn.features.hand_shape_notes[:2]:
+        gloss = _SHAPE_NOTE_GLOSS.get(note.kind)
+        if not gloss:
+            continue
+        bits.append(f"{human_tile_label(note.tile)} — {gloss}")
+
+    ss = turn.features.score_situation
+    if ss is not None:
+        score_bits: list[str] = []
+        if ss.riichi_opponents:
+            n = ss.riichi_opponents
+            score_bits.append(
+                f"{n} opponent{'s' if n != 1 else ''} in riichi"
+            )
+        if ss.score_diff:
+            score_bits.append(f"you’re {ss.score_diff} on points")
+        if ss.late_game:
+            score_bits.append("late game / thin wall")
+        if score_bits:
+            bits.append("; ".join(score_bits))
+
+    if not bits:
+        return None
+    return ". ".join(s.rstrip(".") for s in bits) + "."
+
+
+def _finalize_explanation(
+    turn: TurnExplainInput, explanation: Explanation
+) -> Explanation:
+    """Merge grounded detail into summary; keep detail for review API."""
+    detail = build_detail_paragraph(turn)
+    summary_l = explanation.summary.lower()
+    # Omit cut danger from detail when the summary already teaches it.
+    if detail and re.search(
+        r"\b(?:genbutsu|suji|one-chance|already discarded|can't ron|cant ron)\b",
+        summary_l,
+    ):
+        best_code = _danger_key(_action_tile_token_raw(turn.mortal_best))
+        if best_code:
+            cut_label = human_tile_label(best_code).lower()
+            kept: list[str] = []
+            for chunk in detail.rstrip(".").split(". "):
+                chunk = chunk.strip()
+                if not chunk:
+                    continue
+                chunk_l = chunk.lower()
+                if cut_label and cut_label in chunk_l and re.search(
+                    r"\bis (?:genbutsu|suji|one-chance)\b",
+                    chunk_l,
+                ):
+                    continue
+                kept.append(chunk)
+            detail = (
+                ". ".join(s.rstrip(".") for s in kept) + "." if kept else None
+            )
+    summary = _merge_detail_into_summary(explanation.summary, detail)
+    return explanation.model_copy(update={"summary": summary, "detail": detail})
 
 
 def _yakuhai_value_tiles(context: dict[str, Any] | None) -> set[str]:
@@ -864,71 +994,6 @@ def _note_for_cut(turn: TurnExplainInput, cut_raw: str | None):
         except ValueError:
             continue
     return turn.features.hand_shape_notes[0]
-
-
-def build_detail_paragraph(turn: TurnExplainInput) -> str | None:
-    """One extra grounded paragraph for the second-click deeper Why? path."""
-    bits: list[str] = []
-
-    ukeire = turn.features.ukeire
-    alt = turn.features.ukeire_alt
-    if alt is not None and ukeire.count != alt.count:
-        bits.append(
-            f"Mortal’s cut leaves about {ukeire.count} improving tiles "
-            f"vs about {alt.count} on the alternative"
-        )
-
-    statuses = turn.features.statuses
-    if statuses.tenpai and ukeire.tiles:
-        labels = ", ".join(human_tile_label(t) for t in ukeire.tiles[:6])
-        wait_label = _glossed_wait(statuses.wait_shape)
-        if wait_label:
-            bits.append(f"Waiting on {labels} ({wait_label})")
-        else:
-            bits.append(f"Waiting on {labels}")
-
-    danger = turn.features.danger
-    if danger:
-        parts: list[str] = []
-        for tile, tag in list(danger.items())[:4]:
-            glossed = _glossed_danger(tag) or tag
-            parts.append(f"{human_tile_label(tile)} is {glossed}")
-        if parts:
-            bits.append("; ".join(parts))
-
-    for note in turn.features.hand_shape_notes[:2]:
-        gloss = _SHAPE_NOTE_GLOSS.get(note.kind)
-        if not gloss:
-            continue
-        bits.append(f"{human_tile_label(note.tile)} — {gloss}")
-
-    ss = turn.features.score_situation
-    if ss is not None:
-        score_bits: list[str] = []
-        if ss.riichi_opponents:
-            n = ss.riichi_opponents
-            score_bits.append(
-                f"{n} opponent{'s' if n != 1 else ''} in riichi"
-            )
-        if ss.score_diff:
-            score_bits.append(f"you’re {ss.score_diff} on points")
-        if ss.late_game:
-            score_bits.append("late game / thin wall")
-        if score_bits:
-            bits.append("; ".join(score_bits))
-
-    if not bits:
-        return None
-    return ". ".join(s.rstrip(".") for s in bits) + "."
-
-
-def _finalize_explanation(
-    turn: TurnExplainInput, explanation: Explanation
-) -> Explanation:
-    """Merge grounded detail into summary; keep detail for review API."""
-    detail = build_detail_paragraph(turn)
-    summary = _merge_detail_into_summary(explanation.summary, detail)
-    return explanation.model_copy(update={"summary": summary, "detail": detail})
 
 
 def _midhand_shape_clause(
@@ -1512,11 +1577,31 @@ def template_explain(turn: TurnExplainInput) -> Explanation:
     ):
         move_sents.append(thin_extra)
 
+    contrast_tile = player_tile
+    contrast_code = player_code
+    contrast_action = player
+    if contrasted and contrasted != player:
+        contrast_tile = _action_display(contrasted)
+        contrast_code = _danger_key(_action_tile_token_raw(contrasted))
+        contrast_action = contrasted
+
+    danger_bits, danger_nudge = _danger_compare_sentences(
+        turn,
+        best_tile=best_tile,
+        player_tile=contrast_tile,
+        best_code=best_code,
+        player_code=contrast_code,
+        player=contrast_action,
+        best=best,
+    )
+    defense_led = bool(danger_bits)
+
     has_efficiency_lead = bool(wait_shape) or note_kind == "contrast"
     if shanten is not None:
         if has_efficiency_lead:
             state_sents.append(f"You’re {_glossed_shanten_phrase(shanten)}")
-        else:
+        elif not defense_led:
+            # Skip bare Hand-stats echo when defense is the reason.
             move_sents.append(
                 f"You’re {_glossed_shanten_phrase(shanten)} with "
                 f"{_glossed_acceptances_phrase(ukeire.count)}"
@@ -1524,7 +1609,9 @@ def template_explain(turn: TurnExplainInput) -> Explanation:
 
     goal_bit = _shape_goal_phrase(turn)
     midhand_bit = _midhand_shape_clause(turn, best_raw, best_tile)
-    if goal_bit:
+    # Defense-led tips: cut teaching only — Aiming for covers yaku; Hand stats
+    # covers metrics. Shape goals stay when they *are* the reason (no danger).
+    if goal_bit and not defense_led:
         if goal_bit.startswith("fits"):
             shape_sentence = f"That {goal_bit}"
         else:
@@ -1552,7 +1639,7 @@ def template_explain(turn: TurnExplainInput) -> Explanation:
                 or turn.features.statuses.dora_in_hand
             ):
                 focus = "value"
-    if midhand_bit:
+    if midhand_bit and not defense_led:
         state_sents.append(_sentence_case(midhand_bit))
 
     furiten_bit = _furiten_because_sentence(turn)
@@ -1560,23 +1647,6 @@ def template_explain(turn: TurnExplainInput) -> Explanation:
         state_sents.append(furiten_bit)
         focus = "defense" if focus == "efficiency" else "mixed"
 
-    contrast_tile = player_tile
-    contrast_code = player_code
-    contrast_action = player
-    if contrasted and contrasted != player:
-        contrast_tile = _action_display(contrasted)
-        contrast_code = _danger_key(_action_tile_token_raw(contrasted))
-        contrast_action = contrasted
-
-    danger_bits, danger_nudge = _danger_compare_sentences(
-        turn,
-        best_tile=best_tile,
-        player_tile=contrast_tile,
-        best_code=best_code,
-        player_code=contrast_code,
-        player=contrast_action,
-        best=best,
-    )
     state_sents.extend(danger_bits)
     if danger_nudge == "defense":
         focus = "defense" if focus == "efficiency" else (
@@ -2030,6 +2100,72 @@ def _false_cut_note_tile_error(
     return None
 
 
+def _pinned_discard_keep_error(
+    turn: TurnExplainInput, summary_l: str
+) -> str | None:
+    """Reject Throw X tips that also advise keeping the pinned cut."""
+    if parse_action_kind(turn.mortal_best) != "dahai":
+        return None
+    pin = _action_tile_token(turn.mortal_best)
+    if not pin:
+        return None
+
+    if _PINNED_CUT_KEEP_IT_PATTERN.search(summary_l):
+        return "pinned_cut_keep_contradiction"
+
+    label = _tile_claim_label_pattern(pin)
+    if re.search(
+        rf"\b(?:keep(?:s|ing)?|preserve(?:s|ing)?|hold(?:s|ing)?\s+onto)\s+"
+        rf"{label}\b",
+        summary_l,
+    ):
+        return "pinned_cut_keep_contradiction"
+    return None
+
+
+def _negated_before(summary_l: str, start: int) -> bool:
+    """True when match at start is preceded by don't / do not / not."""
+    prefix = summary_l[max(0, start - 24) : start]
+    return bool(re.search(r"(?:don['\u2019]t|do\s+not|not)\s+$", prefix))
+
+
+def _action_lead_polarity_error(
+    turn: TurnExplainInput, summary_l: str
+) -> str | None:
+    """Reject Skip/Call or Declare/Stay-silent leads that flip advice mid-tip."""
+    if is_call_decision_turn(turn):
+        kind = parse_action_kind(turn.mortal_best)
+        if kind == "none":
+            if re.search(
+                r"\b(?:better to call|should call|take the (?:pon|chi|kan))\b",
+                summary_l,
+            ):
+                return "action_lead_polarity_inverted"
+        elif kind in ("pon", "chi", "kan"):
+            if re.search(
+                r"\b(?:better to skip|should skip|stay closed instead)\b",
+                summary_l,
+            ):
+                return "action_lead_polarity_inverted"
+        return None
+
+    if is_riichi_decision_turn(turn):
+        kind = parse_action_kind(turn.mortal_best)
+        if kind == "reach":
+            for m in re.finditer(r"\bstay silent\b", summary_l):
+                if not _negated_before(summary_l, m.start()):
+                    return "action_lead_polarity_inverted"
+            if re.search(r"\bbetter not to (?:riichi|reach)\b", summary_l):
+                return "action_lead_polarity_inverted"
+        elif kind == "none":
+            for m in re.finditer(r"\bdeclare riichi\b", summary_l):
+                if not _negated_before(summary_l, m.start()):
+                    return "action_lead_polarity_inverted"
+        return None
+
+    return None
+
+
 def validate_explanation(turn: TurnExplainInput, explanation: Explanation) -> list[str]:
     """Return list of grounding violations (empty = ok)."""
     errors: list[str] = []
@@ -2092,6 +2228,14 @@ def validate_explanation(turn: TurnExplainInput, explanation: Explanation) -> li
 
     if _CUT_NOTE_POLARITY_PATTERN.search(summary_l):
         errors.append("cut_note_polarity_inverted")
+
+    keep_err = _pinned_discard_keep_error(turn, summary_l)
+    if keep_err:
+        errors.append(keep_err)
+
+    lead_err = _action_lead_polarity_error(turn, summary_l)
+    if lead_err:
+        errors.append(lead_err)
 
     shape_on_err = _isolated_shape_on_cut_error(turn, summary_l)
     if shape_on_err:

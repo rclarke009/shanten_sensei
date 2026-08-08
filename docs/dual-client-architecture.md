@@ -7,7 +7,7 @@ One local Sensei + overlay install; two ways to play Majsoul next to the coach. 
 | Path | Status |
 |------|--------|
 | Chromium (Playwright) | Supported — see [`live-setup.md`](live-setup.md) |
-| Safari + companion window | Designed here; **not shipped** as a polished UX yet |
+| Safari + companion window | **Supported on macOS** — Settings → Safari companion mode |
 | Mac Majsoul native app | **Out of scope** |
 | Hosted live / zero-install proxy | **Out of scope** |
 
@@ -72,42 +72,31 @@ Docs for players: [`live-setup.md`](live-setup.md).
 
 ---
 
-## Path B — Safari (designed; implement later)
+## Path B — Safari (macOS, shipped)
 
 Goal: users who will not use Chromium play Majsoul in **Safari**, with the same companion coach beside it.
 
-### Intended UX
+### UX (implemented)
 
-1. Start overlay → mitm starts; **do not** start Playwright Chromium.
-2. User enables a **scoped** Safari/macOS proxy session that sends **Majsoul hosts only** to `127.0.0.1:{mitm_port}` (see precautions doc).
-3. Trust the local mitm CA (per-machine under `mitm_config/`).
-4. Open Majsoul in Safari (e.g. YoStar English URL).
-5. When lobby/game WS hits mitm without Playwright, overlay already classifies the client as `GameClientType.PROXY` (“Proxy Client”).
-6. Coach UI is **companion window only** — no Safari content-script / in-page HUD in v1.
-7. On quit: tear down scoped proxy (and document manual off steps).
+1. Settings → **`safari_mode`** → restart overlay.
+2. Overlay starts mitm; **does not** start Playwright Chromium.
+3. [`common/macos_proxy.py`](file:///Users/rebeccaclarke/a_new_projects_folder/shanten-sensei-overlay/common/macos_proxy.py) writes `mitm_config/sensei-majsoul.pac` and enables auto-proxy via `networksetup` for Wi-Fi/Ethernet-like services (Majsoul hosts → `127.0.0.1:{mitm_port}`, else `DIRECT`).
+4. Trust the local mitm CA (login keychain preferred; System + sudo fallback).
+5. Open Majsoul in Safari; when lobby/game WS hits mitm, client type is `GameClientType.PROXY`.
+6. Coach UI is **companion window only** — Start Browser / in-page Overlay disabled.
+7. On quit (and `atexit`): restore previous auto-proxy / turn PAC off.
 
-### Design requirements for later code
+Player steps: [`live-setup.md`](live-setup.md#safari-companion-macos).
 
-| Requirement | Why |
-|-------------|-----|
-| Loopback-only mitm listen | No LAN exposure of the intercept |
-| Domain-scoped proxy (Majsoul hosts), not permanent system-wide proxy | Limits blast radius; see precautions |
-| Clear ON/OFF tied to overlay start/stop | Users must not leave intercept on after coaching |
-| Companion-only UI for Safari | Avoid injecting privileged scripts into the Majsoul page |
-| Reuse `PROXY` client path | Capture/core already exist when WS arrives without Playwright |
-| Same practice-only gate | No special case for Safari ranked |
+### Implementation map
 
-### Modules to extend (when implementing)
-
-- Settings / toolbar: explicit “Safari / external browser” mode vs “Start Browser”
-- macOS helper to apply/remove a **PAC or scoped proxy** for Majsoul domains only
-- Cert install UX on Darwin (existing `install_mitm_cert` / `security` helpers are marked needs verification)
-- Status copy: dual-window instructions; disable or hide Chromium-only Overlay HUD controls in Safari mode
-- Docs: player steps in `live-setup.md` once the button path ships
-
-### Majsoul host hints
-
-Overlay already treats related hosts for proxy filtering concepts (e.g. `mahjongsoul.com`, `yo-star.com` in `common/utils.py`). Implementation should keep the allowlist tight and review CDN/WS hostnames against a real Safari session before shipping.
+| Piece | Location |
+|-------|----------|
+| PAC + networksetup | `shanten-sensei-overlay/common/macos_proxy.py` |
+| Setting | `safari_mode` in `common/settings.py` |
+| Lifecycle | `bot_manager.py` (`_enable_safari_proxy` / `_disable_safari_proxy`) |
+| WS allowlist in Safari mode | `MitmController(allowed_domains=MAJSOUL_DOMAINS)` |
+| Companion UI | `gui/main_gui.py`, `gui/settings_window.py`, `common/lan_str.py` |
 
 ---
 

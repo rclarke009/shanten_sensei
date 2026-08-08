@@ -27,8 +27,8 @@ The overlay’s mitm CA (under the overlay’s `mitm_config/` folder, typically 
 |------|--------|
 | Per-machine cert | Let mitmproxy generate CA material in each install’s `mitm_config/`. **Never** ship one shared CA private key to all users. |
 | Loopback only | mitm listens on `127.0.0.1` (or equivalent local-only bind). Do not expose the intercept on the LAN. |
-| Scoped Safari proxy | When Safari path ships: proxy **Majsoul-related hosts only**, not “all HTTPS forever.” |
-| Off when done | Tie proxy ON/OFF to overlay start/stop. Document manual disable if automation fails. Never tell users to leave a system-wide proxy on after coaching. |
+| Scoped Safari proxy | Safari mode writes a PAC that proxies **Majsoul-related hosts only** (`sensei-majsoul.pac`), not all HTTPS. |
+| Off when done | Overlay disables/restores auto-proxy on quit (`atexit` best-effort). Document manual disable if the app crashes. Never leave Auto Proxy on after coaching. |
 | Companion for Safari | Coach UI stays in the tkinter companion window. No in-page Safari HUD / content script in v1 (limits page-world privilege). |
 | Practice-only gate | Keep ranked Why? disabled (`sensei_mode`); do not market ladder assistance. |
 | Known install source | Users should install only from the official overlay / Sensei repos or known releases. A fake “Sensei” that installs a CA is the realistic spyware vector. |
@@ -39,15 +39,15 @@ Code-signing / notarization may come in a later packaging pass; until then, pref
 
 ## Chromium vs Safari — risk comparison
 
-| | Chromium path (today) | Safari path (designed) |
-|--|------------------------|-------------------------|
-| How traffic is proxied | Playwright sets a **browser-only** proxy on the app Chromium | OS/Safari **scoped** proxy to local mitm |
-| Typical blast radius | Mostly the app-owned browser session | Only Majsoul hosts **if** scope is correct; wider if someone enables system-wide proxy |
+| | Chromium path | Safari path (macOS) |
+|--|---------------|---------------------|
+| How traffic is proxied | Playwright sets a **browser-only** proxy on the app Chromium | macOS **Auto Proxy PAC** (Majsoul hosts → local mitm) |
+| Typical blast radius | Mostly the app-owned browser session | Only Majsoul hosts matched by the PAC |
 | In-page HUD | Optional Playwright canvas inject | **Not used** — companion window only |
-| Cert trust | Still needed for MITM TLS | Same class of trust; often System keychain on macOS |
-| Leave-on risk | Lower (closing app browser ends that proxy use) | Higher if scoped/system proxy is left enabled after quit |
+| Cert trust | Still needed for MITM TLS | Same; prefers login keychain, System+sudo fallback |
+| Leave-on risk | Lower (closing app browser ends that proxy use) | Cleared on quit; if crash, turn Auto Proxy off manually (below) |
 
-Chromium today is the smaller everyday footprint. Safari is fine if scope and OFF behavior are solid — that is a hard requirement before calling Safari “supported.”
+Chromium stays the smaller everyday footprint. Safari is supported when you use the built-in companion mode (PAC + quit cleanup).
 
 ---
 
@@ -57,17 +57,17 @@ Chromium today is the smaller everyday footprint. Safari is fine if scope and OF
 
 1. Install overlay + Sensei from the **official** sibling repos (see [`live-setup.md`](live-setup.md)).
 2. Start the overlay once so `mitm_config/` can create the local CA.
-3. Install/trust the MITM cert when prompted (or follow overlay logs). On macOS this may ask for admin via `security add-trusted-cert` — **verify on your machine**; Darwin helpers in the overlay are marked needs testing.
+3. Install/trust the MITM cert when prompted (or follow overlay logs). On macOS you may get a Keychain prompt (login keychain) or an admin/`sudo` prompt for the System keychain.
 4. Prefer understanding: the cert is for **local** coaching, not a random website.
 
 ### Each coaching session
 
 1. Start the overlay helper.
-2. **Chromium (supported):** use **Start Browser** and play only in that window.  
-   **Safari (when shipped):** enable the helper’s scoped proxy, then open Majsoul in Safari — do not use an unproxied window and expect tips.
+2. **Chromium:** use **Start Browser** and play only in that window.  
+   **Safari (macOS):** Settings → Safari companion mode → restart → open Majsoul in Safari (do not use Start Web Client).
 3. Join **friend / practice / vs-AI** only.
 4. Keep the companion window visible beside the game for status / Why?.
-5. When finished: **quit the overlay**. Confirm proxy is off (especially after any Safari/system proxy session).
+5. When finished: **quit the overlay** (Safari PAC is turned off / restored automatically).
 
 ### After
 
@@ -88,22 +88,34 @@ To remove: open **Manage computer certificates** (or `certmgr.msc`) → **Truste
 
 ### macOS
 
-Overlay attempts install with:
+Overlay prefers installing into the **login** keychain first:
+
+```bash
+security add-trusted-cert -d -r trustRoot -k ~/Library/Keychains/login.keychain-db /path/to/mitmproxy-ca-cert.cer
+```
+
+If that fails, it falls back to System keychain (may prompt for admin):
 
 ```bash
 sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain /path/to/mitmproxy-ca-cert.cer
 ```
 
-**(Needs verification on real Macs** — marked TODO in overlay `common/utils.py`.)
-
 To remove manually:
 
 1. Open **Keychain Access**.
-2. Check **System** (and **login** if you installed there instead).
+2. Check **login** and **System**.
 3. Search for `mitmproxy` / the CA common name from your `mitm_config` cert.
-4. Delete the certificate and set trust to absent, or use `security remove-trusted-cert` / delete from the keychain with admin rights.
+4. Delete the certificate.
 
 Also delete the overlay’s local `mitm_config/` directory if you no longer need it (contains private key material for that install).
+
+### Safari Auto Proxy stuck after a crash
+
+```bash
+networksetup -listallnetworkservices
+networksetup -setautoproxystate "Wi-Fi" off
+# or Ethernet / your real service name
+```
 
 ### Always
 

@@ -211,7 +211,7 @@ Failure modes to guard in the prompt / post-checks:
 
 **How to play live:** step-by-step setup + in-game flow → **[`docs/live-setup.md`](docs/live-setup.md)**
 
-**Dual clients (Chromium today, Safari companion designed):** [`docs/dual-client-architecture.md`](docs/dual-client-architecture.md) · proxy/cert precautions: [`docs/proxy-trust-precautions.md`](docs/proxy-trust-precautions.md)
+**Dual clients (Chromium + Safari companion on macOS):** [`docs/dual-client-architecture.md`](docs/dual-client-architecture.md) · proxy/cert precautions: [`docs/proxy-trust-precautions.md`](docs/proxy-trust-precautions.md) · play steps: [`docs/live-setup.md`](docs/live-setup.md)
 
 **Repos:**
 

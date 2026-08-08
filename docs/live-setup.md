@@ -9,9 +9,9 @@ Live coaching uses two sibling repos: this explainer library, and the [overlay f
 | Path | Status |
 |------|--------|
 | **Chromium** — **Start Browser** in the overlay | Supported (steps below) |
-| **Safari** — Majsoul in Safari + companion coach window | Designed; not a polished one-click path yet |
+| **Safari** — Majsoul in Safari + companion coach window | Supported on **macOS** (see [Safari companion](#safari-companion-macos)) |
 
-Dual-window layout (game beside the Sensei companion UI) is the intended UX for both. Details and future Safari work: [`dual-client-architecture.md`](dual-client-architecture.md). Certificate / proxy trust rules: [`proxy-trust-precautions.md`](proxy-trust-precautions.md).
+Dual-window layout (game beside the Sensei companion UI) is the intended UX for both. Architecture: [`dual-client-architecture.md`](dual-client-architecture.md). Certificate / proxy trust: [`proxy-trust-precautions.md`](proxy-trust-precautions.md).
 
 ---
 
@@ -124,12 +124,29 @@ Confirm **Settings → Model** is `Local` and points at that file. How to obtain
 
 ---
 
+## Safari companion (macOS)
+
+Use this if you want Majsoul in **Safari** and the coach in the Sensei window beside it (no Chromium).
+
+1. **Settings → enable “Safari companion mode (macOS; no Chromium)”** → Save. Restart the overlay when prompted (MITM / proxy settings need a restart).
+2. **Start the overlay** (`python main.py`). It starts mitm, trusts/installs the local MITM cert if needed, and applies a **Majsoul-only PAC** via `networksetup` (Wi-Fi/Ethernet). You may see a Keychain or admin prompt for the cert.
+3. **Do not** click **Start Web Client**. Arrange Safari + the companion window side by side.
+4. **Open Majsoul in Safari** (default English URL: `https://mahjongsoul.game.yo-star.com/`).
+5. When the status shows **Proxy Client**, join friend / practice / vs-AI and use **Why?** in the companion window. In-page Overlay HUD is disabled in this mode.
+6. **Quit the overlay** when done — it turns the PAC / auto-proxy off and restores your previous setting. If the app crashes and browsing looks broken, see [`proxy-trust-precautions.md`](proxy-trust-precautions.md) for manual `networksetup -setautoproxystate … off`.
+
+Safari mode is **macOS only**. On other OSes, leave the setting off and use Chromium.
+
+---
+
 ## Quick troubleshooting
 
 | Symptom | Likely fix |
 |---------|------------|
 | No recommendations | Model not loaded — check Settings → Local `.pth`, restart after MITM/model changes |
-| Overlay blank | Overlay toggle on; play inside the app’s browser |
+| Overlay blank | Overlay toggle on; play inside the app’s browser (Chromium path) |
+| Safari: no Proxy Client / no tips | Safari companion mode on + restart; cert trusted; Majsoul opened in Safari after overlay start; quit/restart if PAC failed |
+| Browsing broken after Safari crash | `networksetup -setautoproxystate "Wi-Fi" off` (see precautions doc) |
 | Why? greyed / “disabled” | You’re in ranked or mode is unknown — use friend / practice |
 | `shanten_sensei` import errors | Re-run `pip install -e ../shanten_sensei` inside the overlay venv |
 | Generic / template Why? text | Put `OPENAI_API_KEY` or `SENSEI_API_KEY` in overlay `.env`, sibling `../shanten_sensei/.env`, or export before `python main.py`. Restart the overlay after changing keys. |

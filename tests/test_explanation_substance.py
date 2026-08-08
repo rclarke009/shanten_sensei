@@ -442,6 +442,164 @@ def test_validate_allows_keeps_ryanmen_wait():
     assert validate_explanation(turn, good) == []
 
 
+def test_validate_rejects_better_to_keep_it_after_throw_west():
+    """Screenshot: Throw West then 'better to keep it for now'."""
+    turn = _turn(
+        mortal_best="dahai W",
+        player_action="dahai E",
+        diverge=False,
+        ukeire=UkeireInfo(count=64, tiles=["6m", "9m", "1p"], remaining_by_tile={}),
+        ukeire_alt=UkeireInfo(count=64, tiles=["6m", "9m", "1p"], remaining_by_tile={}),
+    )
+    turn.features.hand_shape_notes = [HandShapeNote(kind="dead_end", tile="W")]
+    turn.features.score_situation = ScoreSituation(score_diff="even")
+    bad = Explanation(
+        summary=(
+            "Throw West. This keeps your hand efficient with about 64 tiles that "
+            "can improve it, while throwing East would not change that count. "
+            "You're 3-shanten (3 steps from ready) and holding a dead-end tile—"
+            "West connects to nothing useful, but it's still better to keep it "
+            "for now."
+        ),
+        focus="efficiency",
+        pinned_action="dahai W",
+        contrasted_action="dahai E",
+    )
+    errors = validate_explanation(turn, bad)
+    assert "pinned_cut_keep_contradiction" in errors
+
+    repaired = template_explain(turn)
+    assert "Throw" in repaired.summary
+    assert "West" in repaired.summary
+    assert "is a dead-end tile" in repaired.summary
+    assert not re.search(
+        r"\bbetter to keep\b|\bkeep(?:s|ing)? it\b", repaired.summary, re.I
+    )
+    assert validate_explanation(turn, repaired) == []
+
+
+def test_validate_rejects_keep_west_pinned_cut():
+    turn = _turn(mortal_best="dahai W", player_action="dahai E")
+    turn.features.hand_shape_notes = [HandShapeNote(kind="dead_end", tile="W")]
+    bad = Explanation(
+        summary=(
+            "Throw West. You're 3-shanten (3 steps from ready) with about 51 "
+            "tiles that can improve your hand. West is a dead-end tile, but "
+            "keeping West is still fine for now."
+        ),
+        focus="efficiency",
+        pinned_action="dahai W",
+        contrasted_action="dahai E",
+    )
+    assert "pinned_cut_keep_contradiction" in validate_explanation(turn, bad)
+
+
+def test_validate_allows_keeping_dora_while_throwing_west():
+    turn = _turn(
+        mortal_best="dahai W",
+        player_action="dahai E",
+        dora_in_hand=["5mr"],
+        ukeire=UkeireInfo(count=51, tiles=["6m"], remaining_by_tile={"6m": 3}),
+    )
+    good = Explanation(
+        summary=(
+            "Throw West, not East. You're 3-shanten (3 steps from ready) with "
+            "about 51 tiles that can improve your hand.\nRed 5-man is dora "
+            "(bonus tile), so keeping dora red 5-man boosts your score if you win."
+        ),
+        focus="value",
+        pinned_action="dahai W",
+        contrasted_action="dahai E",
+    )
+    errors = validate_explanation(turn, good)
+    assert "pinned_cut_keep_contradiction" not in errors
+    assert errors == []
+
+
+def test_validate_rejects_skip_then_better_to_call():
+    from shanten_sensei.live import (
+        candidates_from_meta_options,
+        turn_from_live,
+    )
+
+    turn = turn_from_live(
+        hand=[
+            "4m",
+            "5m",
+            "4p",
+            "4p",
+            "8p",
+            "9p",
+            "3s",
+            "3s",
+            "4s",
+            "5s",
+            "6s",
+            "7s",
+            "9s",
+        ],
+        recommended="none",
+        candidates=candidates_from_meta_options([("none", 0.99), ("pon", 0.01)]),
+        call_tile="3s",
+        visible_discards={"2": ["3s"]},
+    )
+    bad = Explanation(
+        summary=(
+            "Skip the pon on 3-sou. You're 2-shanten (2 steps from ready) closed "
+            "with about 20 improving tiles. Still, it's better to call."
+        ),
+        focus="efficiency",
+        pinned_action="none",
+        contrasted_action="pon 3s",
+    )
+    assert "action_lead_polarity_inverted" in validate_explanation(turn, bad)
+    result = template_explain(turn)
+    assert "Skip" in result.summary
+    assert validate_explanation(turn, result) == []
+
+
+def test_validate_rejects_declare_riichi_then_stay_silent():
+    from shanten_sensei.live import (
+        candidates_from_meta_options,
+        turn_from_live,
+    )
+
+    turn = turn_from_live(
+        hand=[
+            "1m",
+            "2m",
+            "3m",
+            "1p",
+            "2p",
+            "3p",
+            "4s",
+            "5s",
+            "6s",
+            "8s",
+            "8s",
+            "9p",
+            "5m",
+            "5m",
+        ],
+        recommended="reach",
+        candidates=candidates_from_meta_options([("reach", 0.85), ("none", 0.15)]),
+        dora_indicators=["4m"],
+    )
+    bad = Explanation(
+        summary=(
+            "Declare riichi. You're tenpai (ready) with a ryanmen (two-sided "
+            "open) wait, but it's better to stay silent."
+        ),
+        focus="tempo",
+        pinned_action="reach",
+        contrasted_action="none",
+    )
+    assert "action_lead_polarity_inverted" in validate_explanation(turn, bad)
+    result = template_explain(turn)
+    assert "Declare riichi" in result.summary
+    assert validate_explanation(turn, result) == []
+
+
 def test_payload_includes_hand_shape_notes():
     turn = _turn(shape_goals=["tanyao"], mortal_best="dahai 9p")
     turn.features.hand_shape_notes = [
@@ -547,7 +705,11 @@ def test_template_suji_defense_compare():
     )
     result = template_explain(turn)
     assert "suji" in result.summary
-    assert "interval-safe" in result.summary
+    assert (
+        "interval-safe" in result.summary
+        or "edge tiles" in result.summary.lower()
+        or "discarded" in result.summary.lower()
+    )
     assert "isn't" in result.summary.lower() or "4-man" in result.summary
     assert result.focus in ("defense", "mixed")
     score = score_explanation_substance(turn, result.summary)
@@ -596,7 +758,7 @@ def test_build_detail_paragraph_ukeire_danger_score():
         diverge=True,
         mortal_best="dahai 9p",
         player_action="dahai 5s",
-        danger={"9p": "suji", "5s": "one-chance"},
+        danger={"9p": "suji", "5s": "one-chance", "2p": "genbutsu"},
         ukeire=UkeireInfo(count=8, tiles=["2m"], remaining_by_tile={"2m": 3}),
         ukeire_alt=UkeireInfo(count=3, tiles=["2m"], remaining_by_tile={"2m": 3}),
     )
@@ -613,6 +775,9 @@ def test_build_detail_paragraph_ukeire_danger_score():
     assert "improving tiles" in detail
     assert "vs about" in detail
     assert "suji" in detail
+    # Cut-only: do not catalogue other danger tiles.
+    assert "one-chance" not in detail
+    assert "genbutsu" not in detail
     assert "floating terminal" in detail or "lone 1/9" in detail
     assert "riichi" in detail.lower()
     assert "trailing" in detail
@@ -630,9 +795,72 @@ def test_template_explain_merges_detail_into_summary():
     result = template_explain(turn)
     assert result.summary
     assert result.detail is not None
-    assert "improving tiles" in result.summary
+    # Defense-led: tip stays short; do not re-inflate with Mortal's-cut metrics.
+    assert "already discarded" in result.summary.lower()
+    assert "mortal" not in result.summary.lower()
     assert "improving tiles" in result.detail
     assert validate_explanation(turn, result) == []
+
+
+def test_template_defense_multi_danger_cut_only():
+    """Screenshot-shaped: teach only the cut, no other-tile catalogue / UI echoes."""
+    turn = _turn(
+        shape_goals=["tanyao", "pinfu"],
+        mortal_best="dahai 9s",
+        player_action="dahai 9s",
+        danger={
+            "9s": "genbutsu",
+            "2p": "genbutsu",
+            "4p": "genbutsu",
+            "9m": "suji",
+            "6s": "suji",
+        },
+        ukeire=UkeireInfo(count=24, tiles=["2m", "3m", "5p"]),
+        diverge=False,
+    )
+    turn.game_state.visible_discards = {"1": ["9s"]}
+    turn.features.danger_detail = {"9s": {"tag": "genbutsu", "seats": ["1"]}}
+    result = template_explain(turn)
+    summary_l = result.summary.lower()
+    assert "9-sou" in summary_l
+    assert summary_l.startswith("throw")
+    assert "already discarded" in summary_l
+    assert "can't ron" in summary_l or "cant ron" in summary_l
+    # No multi-tile catalogue
+    assert "2-pin" not in summary_l
+    assert "4-pin" not in summary_l
+    assert "9-man" not in summary_l
+    assert "6-sou" not in summary_l
+    assert "also genbutsu" not in summary_l
+    assert "suji lines" not in summary_l
+    # No UI echoes
+    assert "mortal" not in summary_l
+    assert "target:" not in summary_l
+    assert "improving tiles" not in summary_l
+    assert "acceptances" not in summary_l
+    assert "shanten" not in summary_l
+    assert "tanyao" not in summary_l
+    assert "pinfu" not in summary_l
+    assert result.focus in ("defense", "mixed")
+    assert validate_explanation(turn, result) == []
+
+
+def test_build_detail_paragraph_cut_only_danger():
+    turn = _turn(
+        mortal_best="dahai 9s",
+        danger={
+            "9s": "genbutsu",
+            "2p": "genbutsu",
+            "9m": "suji",
+        },
+    )
+    detail = build_detail_paragraph(turn)
+    assert detail is not None
+    assert "9-sou" in detail
+    assert "genbutsu" in detail
+    assert "2-pin" not in detail
+    assert "9-man" not in detail
+    assert "suji" not in detail
 
 
 def _false_safer_tip_turn() -> TurnExplainInput:
@@ -1076,7 +1304,7 @@ def test_named_improving_tiles_on_ukeire_contrast():
 
 def test_summary_word_limit_allows_longer_coaching():
     turn = _turn(shape_goals=["tanyao"], dora_in_hand=["3s"])
-    words = ["word"] * 125
+    words = ["word"] * 85
     good = Explanation(
         summary="Throw 3-pin. " + " ".join(words),
         focus="efficiency",
@@ -1084,7 +1312,7 @@ def test_summary_word_limit_allows_longer_coaching():
     )
     assert validate_explanation(turn, good) == []
     too_long = Explanation(
-        summary="Throw 3-pin. " + " ".join(["word"] * 130),
+        summary="Throw 3-pin. " + " ".join(["word"] * 90),
         focus="efficiency",
         pinned_action="dahai 3p",
     )
