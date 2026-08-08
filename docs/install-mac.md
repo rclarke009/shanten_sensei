@@ -4,7 +4,7 @@
 
 Practice / friend / vs-AI only — **not for ranked**.
 
-**Defaults:** English overlay UI and the English YoStar Majsoul client. Change either in **Settings** if needed.
+**Defaults:** English overlay UI and the English YoStar Majsoul client. Setup and updates re-apply these; change either in **Settings** if needed.
 
 ## Quick start
 
