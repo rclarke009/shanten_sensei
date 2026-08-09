@@ -3,7 +3,7 @@
 from shanten_sensei.schema import Explanation, TurnExplainInput
 
 __all__ = ["Explanation", "TurnExplainInput", "explain", "turn_from_live"]
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 
 def __getattr__(name: str):

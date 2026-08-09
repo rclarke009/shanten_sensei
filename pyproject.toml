@@ -1,6 +1,6 @@
 [project]
 name = "shanten-sensei"
-version = "0.1.0"
+version = "0.1.1"
 description = "AI coach that explains Mortal's riichi recommendations in plain English"
 readme = "README.md"
 license = "Apache-2.0"
