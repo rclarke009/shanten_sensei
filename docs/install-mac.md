@@ -19,7 +19,7 @@ Practice / friend / vs-AI only — **not for ranked**.
 
 1. Open [overlay Releases](https://github.com/rclarke009/shanten-sensei-overlay/releases/latest) and download **`Install-Shanten-Sensei.zip`**.
 2. Unzip it, then double-click **`Install-Shanten-Sensei.command`** (right-click → **Open** if macOS blocks it).
-3. It installs **Shanten Sensei** to Applications and opens the app. Complete the **first-run wizard** (bundled Mortal model, Safari companion, optional API key).
+3. It installs **Shanten Sensei** to Applications and opens the app. The installer checks GitHub for the latest release and re-downloads if your cached `.dmg` is older. Complete the **first-run wizard** (bundled Mortal model, Safari companion, optional API key).
 4. Play Majsoul in **Safari**, join friend / practice / vs-AI, press **Why?** in the coach window.
 
 **Or** use the `.dmg` manually: drag **Shanten Sensei** to Applications (right-click → **Open** if macOS warns about an unsigned build).
