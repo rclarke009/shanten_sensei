@@ -10,12 +10,8 @@ Practice / friend / vs-AI only — **not for ranked**.
 
 | Method | When to use |
 |--------|-------------|
-| **[Install-Shanten-Sensei.zip](https://github.com/rclarke009/shanten-sensei-overlay/releases/latest)** | **Easiest** — unzip, double-click the `.command` inside |
+| **[Install-Shanten-Sensei.zip](https://github.com/rclarke009/shanten-sensei-overlay/releases/latest)** | **Recommended** — unzip, double-click the `.command` inside |
 | **[Download .dmg](https://github.com/rclarke009/shanten-sensei-overlay/releases)** | Manual drag-to-Applications install |
-| **[One-click installer](https://github.com/rclarke009/shanten-sensei-overlay/blob/main/scripts/install-macos.command)** | From a cloned overlay repo before a Release exists |
-| **[Developer setup](live-setup.md)** | Contributing or Chromium / from-source |
-
-### Download path (recommended)
 
 1. Open [overlay Releases](https://github.com/rclarke009/shanten-sensei-overlay/releases/latest) and download **`Install-Shanten-Sensei.zip`**.
 2. Unzip it, then double-click **`Install-Shanten-Sensei.command`** (right-click → **Open** if macOS blocks it).
@@ -26,20 +22,9 @@ Practice / friend / vs-AI only — **not for ranked**.
 
 Full troubleshooting and proxy/cert notes: [overlay INSTALL.md](https://github.com/rclarke009/shanten-sensei-overlay/blob/main/INSTALL.md) and [proxy-trust-precautions.md](proxy-trust-precautions.md).
 
-### One-click installer path
-
-1. Install [Python 3.11](https://www.python.org/downloads/).
-2. Clone [shanten-sensei-overlay](https://github.com/rclarke009/shanten-sensei-overlay).
-3. Double-click `scripts/install-macos.command`.
-4. Open **Shanten Sensei** from `~/Applications/`.
-
-The installer installs `shanten-sensei` from PyPI (or git) — you do **not** need a sibling `shanten_sensei` clone.
-
 ## Mortal model
 
-**Release `.dmg` builds** include the [VoidShine/mortal-298k](https://huggingface.co/VoidShine/mortal-298k) checkpoint (AGPL-3.0). License text: [overlay MORTAL_MODEL_NOTICE.md](https://github.com/rclarke009/shanten-sensei-overlay/blob/main/licenses/MORTAL_MODEL_NOTICE.md).
-
-**From-source installs** still need your own Akagi-compatible `.pth` ([Akagi](https://github.com/shinkuan/Akagi)).
+Release builds include the [VoidShine/mortal-298k](https://huggingface.co/VoidShine/mortal-298k) checkpoint (AGPL-3.0). License text: [overlay MORTAL_MODEL_NOTICE.md](https://github.com/rclarke009/shanten-sensei-overlay/blob/main/licenses/MORTAL_MODEL_NOTICE.md).
 
 ## Optional LLM Why?
 
@@ -65,4 +50,4 @@ See [phase1-contract.md](phase1-contract.md).
 
 ## Developers
 
-Terminal setup, Chromium browser path, tests, and two-repo layout: [live-setup.md](live-setup.md).
+Terminal setup, Chromium browser path, tests, and from-source overlay install (`scripts/install-macos.command`): [live-setup.md](live-setup.md).

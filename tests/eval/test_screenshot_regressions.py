@@ -122,3 +122,43 @@ def test_screenshot_7s_vs_chun_coaching_depth():
     assert score.thin is False
 
 
+def test_screenshot_chun_vs_west_dora_no_dead_end_on_dora():
+    """Screenshot-shaped: keeping dora West must not also call West dead-end."""
+    turn = make_turn(
+        diverge=False,
+        mortal_best="dahai C",
+        player_action="dahai C",
+        dora_in_hand=["W"],
+        ukeire=UkeireInfo(
+            count=32,
+            tiles=["1m", "2m", "4m", "6m"],
+            remaining_by_tile={"1m": 3, "2m": 3, "4m": 3, "6m": 3},
+        ),
+    )
+    turn.mortal_output.candidates = [
+        MortalCandidate(action="dahai C", prob=0.7),
+        MortalCandidate(action="dahai W", prob=0.2),
+    ]
+    turn.game_state.hand = [
+        "1m",
+        "3m",
+        "5m",
+        "1p",
+        "2p",
+        "3p",
+        "4p",
+        "5p",
+        "6p",
+        "7p",
+        "8p",
+        "9p",
+        "W",
+        "C",
+    ]
+    result = template_explain(turn)
+    summary_l = result.summary.lower()
+    assert "keeping" in summary_l and "dora" in summary_l and "west" in summary_l
+    assert "west is a dead-end" not in summary_l
+    assert "chun is a dead-end" in summary_l
+    assert validate_explanation(turn, result) == []
+

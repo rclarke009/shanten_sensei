@@ -67,6 +67,10 @@ An API key alone does **not** enable the LLM; you must set `SENSEI_USE_LLM=1` (o
 
 Python **3.11** recommended. On macOS use `python3.11` (there is often no bare `python`).
 
+**macOS shortcut:** after cloning the overlay repo, double-click `scripts/install-macos.command` to create a venv, install packages, and add a launcher in `~/Applications/`. Skips Chromium by default (Safari path). For Playwright Chromium too: `INSTALL_CHROMIUM=1 ./scripts/install-macos.command`.
+
+**Manual install:**
+
 ```bash
 cd ../shanten-sensei-overlay
 python3.11 -m venv venv

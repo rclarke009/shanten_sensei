@@ -10,7 +10,7 @@ Shanten Sensei sits on top of existing open-source Mahjong Soul tooling. It does
 
 **Not a developer?** Start here:
 
-- **[Install on Mac](docs/install-mac.md)** — download the `.dmg` or run the one-click installer; Safari companion is the default path.
+- **[Install on Mac](docs/install-mac.md)** — download `Install-Shanten-Sensei.zip` from Releases; Safari companion is the default path.
 - [Overlay Releases](https://github.com/rclarke009/shanten-sensei-overlay/releases) — macOS app bundle when published.
 
 Practice / friend / vs-AI only — not for ranked. Developer setup (Terminal, Chromium, two-repo clone): [`docs/live-setup.md`](docs/live-setup.md).
@@ -248,7 +248,7 @@ Failure modes to guard in the prompt / post-checks:
 
 ## How to play live (short)
 
-**Mac users:** see **[`docs/install-mac.md`](docs/install-mac.md)** (download or one-click installer).
+**Mac users:** see **[`docs/install-mac.md`](docs/install-mac.md)** (download `Install-Shanten-Sensei.zip` from Releases).
 
 **Developers / from source:**
 

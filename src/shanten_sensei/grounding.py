@@ -164,6 +164,23 @@ def _wall_facts_available(turn: TurnExplainInput) -> bool:
     return False
 
 
+def _dora_tile_bases(turn: TurnExplainInput) -> set[str]:
+    bases: set[str] = set()
+    for d in turn.features.statuses.dora_in_hand or []:
+        try:
+            bases.add(deaka(normalize_tile(d)))
+        except ValueError:
+            continue
+    return bases
+
+
+def _is_dora_in_hand_tile(turn: TurnExplainInput, tile_raw: str) -> bool:
+    try:
+        return deaka(normalize_tile(tile_raw)) in _dora_tile_bases(turn)
+    except ValueError:
+        return False
+
+
 def _cut_shape_notes_for_turn(turn: TurnExplainInput) -> list:
     """Mortal-cut notes plus alternate-cut shape note when contrasted."""
     from shanten_sensei.features import alternate_cut_shape_note
@@ -172,7 +189,7 @@ def _cut_shape_notes_for_turn(turn: TurnExplainInput) -> list:
     alt_action = _contrast_alt_action(turn)
     if alt_action and alt_action != turn.mortal_best:
         alt_raw = _action_tile_token_raw(alt_action)
-        if alt_raw:
+        if alt_raw and not _is_dora_in_hand_tile(turn, alt_raw):
             alt_note = alternate_cut_shape_note(
                 turn.game_state.hand,
                 cut_tile=alt_raw,
@@ -787,6 +804,28 @@ def _false_cut_note_tile_error(
     return None
 
 
+def _dora_keep_dead_end_clash_error(
+    turn: TurnExplainInput, summary_l: str
+) -> str | None:
+    """Reject keeping dora on a tile while also calling that tile dead-end."""
+    if not re.search(r"\bkeeping\s+dora\b", summary_l):
+        return None
+    for d in turn.features.statuses.dora_in_hand or []:
+        try:
+            code = deaka(normalize_tile(d))
+        except ValueError:
+            continue
+        label = _tile_claim_label_pattern(code)
+        if not re.search(
+            rf"\bkeeping\s+(?:dora(?:\s*\([^)]*\))?[^.\n]*)?{label}\b",
+            summary_l,
+        ):
+            continue
+        if re.search(rf"{label}\s+is\s+(?:a\s+)?dead[-\s]?end", summary_l):
+            return "dora_keep_dead_end_clash"
+    return None
+
+
 def _pinned_discard_keep_error(
     turn: TurnExplainInput, summary_l: str
 ) -> str | None:
@@ -914,11 +953,16 @@ def _rule_call_kind(turn, summary_l, explanation):
     return _call_kind_mismatch_error(turn, summary_l)
 
 
+def _rule_dora_keep_dead_end(turn, summary_l, explanation):
+    return _dora_keep_dead_end_clash_error(turn, summary_l)
+
+
 GROUNDING_RULES: tuple[GroundingRule, ...] = (
     GroundingRule("false_genbutsu_on_alt", _rule_false_genbutsu),
     GroundingRule("false_ukeire_contrast", _rule_false_ukeire),
     GroundingRule("false_yakuhai_pair", _rule_false_yakuhai),
     GroundingRule("false_cut_note_tile", _rule_false_cut_note),
+    GroundingRule("dora_keep_dead_end_clash", _rule_dora_keep_dead_end),
     GroundingRule("pinned_cut_keep_contradiction", _rule_pinned_keep),
     GroundingRule("action_lead_polarity_inverted", _rule_action_lead),
     GroundingRule("wall_jargon", _rule_wall_jargon),

@@ -708,6 +708,25 @@ RULE_REJECT_CASES: list[tuple[str, TurnExplainInput, Explanation, str]] = [
         "pinned_cut_keep_contradiction",
     ),
     (
+        "dora_keep_dead_end_clash",
+        make_turn(
+            mortal_best="dahai C",
+            player_action="dahai C",
+            dora_in_hand=["W"],
+        ),
+        Explanation(
+            summary=(
+                "Throw Chun, not West.\n"
+                "Keeping dora (bonus tile) West.\n"
+                "West is a dead-end tile."
+            ),
+            focus="value",
+            pinned_action="dahai C",
+            contrasted_action="dahai W",
+        ),
+        "dora_keep_dead_end_clash",
+    ),
+    (
         "wall_jargon",
         _wall_jargon_turn(),
         Explanation(

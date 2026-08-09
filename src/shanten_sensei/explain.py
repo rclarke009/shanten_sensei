@@ -19,6 +19,7 @@ from shanten_sensei.features import (
     alternate_cut_shape_note,
     danger_rank,
     genbutsu_discarders,
+    infer_hand_shape_notes,
 )
 from shanten_sensei.glosses import ACCEPTANCES_GLOSS as _ACCEPTANCES_GLOSS
 from shanten_sensei.glosses import DANGER_GLOSS as _DANGER_GLOSS
@@ -1155,6 +1156,42 @@ def _furiten_because_sentence(turn: TurnExplainInput) -> str | None:
     )
 
 
+def _dora_tile_bases(turn: TurnExplainInput) -> set[str]:
+    bases: set[str] = set()
+    for d in turn.features.statuses.dora_in_hand or []:
+        try:
+            bases.add(deaka(normalize_tile(d)))
+        except ValueError:
+            continue
+    return bases
+
+
+def _is_dora_in_hand_tile(turn: TurnExplainInput, tile_raw: str) -> bool:
+    try:
+        return deaka(normalize_tile(tile_raw)) in _dora_tile_bases(turn)
+    except ValueError:
+        return False
+
+
+def _ensure_cut_shape_notes(turn: TurnExplainInput) -> None:
+    """Populate hand_shape_notes for Mortal's cut when not already set (e.g. tests)."""
+    if turn.features.hand_shape_notes:
+        return
+    if parse_action_kind(turn.mortal_best) != "dahai":
+        return
+    cut_raw = _action_tile_token_raw(turn.mortal_best)
+    if not cut_raw:
+        return
+    notes = infer_hand_shape_notes(
+        turn.game_state.hand,
+        cut_tile=cut_raw,
+        shape_goals=turn.features.shape_goals,
+        shanten=turn.features.shanten,
+    )
+    if notes:
+        turn.features.hand_shape_notes = notes
+
+
 def _note_for_cut(turn: TurnExplainInput, cut_raw: str | None):
     """Hand-shape note matching Mortal's cut tile, if any."""
     if not cut_raw or not turn.features.hand_shape_notes:
@@ -1223,6 +1260,8 @@ def _alternate_midhand_shape_clause(
         return None
     alt_raw = _action_tile_token_raw(contrasted_action)
     if not alt_raw:
+        return None
+    if _is_dora_in_hand_tile(turn, alt_raw):
         return None
     note = alternate_cut_shape_note(
         turn.game_state.hand,
@@ -1962,6 +2001,7 @@ def template_explain(
         known_terms=known_terms,
     )
     with using_known_terms(_known_terms_from_turn(turn)):
+        _ensure_cut_shape_notes(turn)
         return _template_explain_body(turn)
 
 
