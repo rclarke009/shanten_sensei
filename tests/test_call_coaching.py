@@ -405,3 +405,90 @@ def test_table_tips_skip_never_teaches_placement():
     result = template_explain(turn, include_table_tips=True)
     assert "Skip" in result.summary
     assert "at a real table" not in result.summary.lower()
+
+
+CLAIM_KAN_HAND = [
+    "1m",
+    "2m",
+    "3m",
+    "1p",
+    "2p",
+    "3p",
+    "7s",
+    "8s",
+    "9s",
+    "5p",
+    "5p",
+    "5p",
+    "E",
+]
+
+
+def test_table_tips_claimed_kan():
+    turn = turn_from_live(
+        hand=CLAIM_KAN_HAND,
+        recommended={
+            "type": "daiminkan",
+            "pai": "5p",
+            "consumed": ["5p", "5p", "5p"],
+        },
+        candidates=candidates_from_meta_options([("kan_select", 0.9), ("none", 0.1)]),
+        call_tile="5p",
+        call_consumed=["5p", "5p", "5p"],
+    )
+    off = template_explain(turn)
+    assert "at a real table" not in off.summary.lower()
+    on = template_explain(turn, include_table_tips=True)
+    assert "at a real table" in on.summary.lower()
+    assert "three" in on.summary.lower()
+    assert "5-pin" in on.summary.lower()
+    assert "all four" in on.summary.lower()
+    assert "whoever discarded" in on.summary.lower()
+    assert validate_explanation(turn, on) == []
+    stamped = turn.model_copy(
+        update={
+            "features": turn.features.model_copy(
+                update={
+                    "context": {**turn.features.context, "include_table_tips": True}
+                }
+            )
+        }
+    )
+    assert "table_procedure" in build_user_payload(stamped)
+
+
+def test_table_tips_closed_kan_omits_placement():
+    """Ankan is unambiguous as closed; we still skip rather than teach daiminkan layout."""
+    turn = turn_from_live(
+        hand=[
+            "1m",
+            "2m",
+            "3m",
+            "1p",
+            "2p",
+            "3p",
+            "7s",
+            "8s",
+            "9s",
+            "5p",
+            "5p",
+            "5p",
+            "5p",
+            "E",
+        ],
+        recommended={"type": "ankan", "pai": "5p", "consumed": ["5p", "5p", "5p", "5p"]},
+        candidates=candidates_from_meta_options([("kan_select", 0.9), ("none", 0.1)]),
+        call_tile="5p",
+    )
+    result = template_explain(turn, include_table_tips=True)
+    assert "at a real table" not in result.summary.lower()
+    stamped = turn.model_copy(
+        update={
+            "features": turn.features.model_copy(
+                update={
+                    "context": {**turn.features.context, "include_table_tips": True}
+                }
+            )
+        }
+    )
+    assert "table_procedure" not in build_user_payload(stamped)

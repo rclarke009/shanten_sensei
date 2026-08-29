@@ -39,6 +39,18 @@ def test_resolve_web_dir_has_review_html():
     assert (web / "review.html").is_file()
 
 
+def test_review_html_groups_tips_under_advanced():
+    html = (resolve_web_dir() / "review.html").read_text(encoding="utf-8")
+    assert 'className: "advanced-tips"' in html
+    assert 'el("summary", {}, "Advanced")' in html
+    assert 'makeTipsToggle("score-tips-cb", "scoreTips", "Point tips")' in html
+    assert 'makeTipsToggle("table-tips-cb", "tableTips", "Table tips")' in html
+    point_at = html.index("Point tips")
+    table_at = html.index("Table tips")
+    advanced_at = html.index("Advanced")
+    assert advanced_at < point_at < table_at
+
+
 def test_api_review_list_no_explanations(session_and_server):
     _session, base, _calls = session_and_server
     resp = httpx.get(f"{base}/api/review", timeout=5.0)

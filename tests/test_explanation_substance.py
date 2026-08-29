@@ -357,6 +357,23 @@ def test_build_detail_paragraph_ukeire_danger_score():
     assert "trailing" in detail
 
 
+def test_build_detail_skips_ukeire_contrast_when_alt_has_more():
+    """Don't teach vs/if-you-throw when Mortal's cut is not the ukeire winner."""
+    turn = make_turn(
+        diverge=True,
+        mortal_best="dahai 9p",
+        player_action="dahai 5s",
+        ukeire=UkeireInfo(count=6, tiles=["4s", "7s"], remaining_by_tile={"4s": 3, "7s": 3}),
+        ukeire_alt=UkeireInfo(count=16, tiles=["9p"], remaining_by_tile={"9p": 2}),
+    )
+    detail = build_detail_paragraph(turn)
+    if detail:
+        assert "vs about" not in detail
+        assert "if you throw" not in detail.lower()
+    result = template_explain(turn)
+    assert validate_explanation(turn, result) == []
+
+
 def test_merge_skips_mortal_cut_ukeire_when_tiles_that_can_improve():
     """Preferred LLM voice already cites ukeire; don't echo Mortal's-cut contrast."""
     summary = (

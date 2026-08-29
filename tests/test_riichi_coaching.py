@@ -247,12 +247,26 @@ def test_table_tips_declare_riichi_cut_tile():
     )
     off = template_explain(turn)
     assert "at a real table" not in off.summary.lower()
+    assert "table_procedure" not in build_user_payload(turn)
     on = template_explain(turn, include_table_tips=True)
     assert "at a real table" in on.summary.lower()
     assert "stick" in on.summary.lower()
     assert "sideways" in on.summary.lower()
     assert "red 5-sou" in on.summary.lower()
     assert validate_explanation(turn, on) == []
+    stamped = turn.model_copy(
+        update={
+            "features": turn.features.model_copy(
+                update={
+                    "context": {**turn.features.context, "include_table_tips": True}
+                }
+            )
+        }
+    )
+    proc = build_user_payload(stamped).get("table_procedure")
+    assert isinstance(proc, str) and proc
+    assert "stick" in proc.lower()
+    assert "red 5-sou" in proc.lower()
 
 
 def test_table_tips_stay_silent_omits_placement():
@@ -265,3 +279,13 @@ def test_table_tips_stay_silent_omits_placement():
     result = template_explain(turn, include_table_tips=True)
     assert "Stay silent" in result.summary
     assert "at a real table" not in result.summary.lower()
+    stamped = turn.model_copy(
+        update={
+            "features": turn.features.model_copy(
+                update={
+                    "context": {**turn.features.context, "include_table_tips": True}
+                }
+            )
+        }
+    )
+    assert "table_procedure" not in build_user_payload(stamped)

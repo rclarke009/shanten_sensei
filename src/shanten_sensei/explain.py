@@ -886,12 +886,9 @@ def build_detail_paragraph(turn: TurnExplainInput) -> str | None:
     bits: list[str] = []
 
     ukeire = turn.features.ukeire
-    alt = turn.features.ukeire_alt
-    if alt is not None and ukeire.count != alt.count:
-        bits.append(
-            "This discard leaves "
-            + _ukeire_contrast_note_text(turn, ukeire.count, alt.count)
-        )
+    note_kind, note = _wall_note_detail(turn)
+    if note_kind in ("contrast", "narrow_contrast") and note:
+        bits.append("This discard leaves " + note)
 
     statuses = turn.features.statuses
     if is_hora_decision_turn(turn):
