@@ -511,8 +511,33 @@ def is_riichi_decision_turn(turn: TurnExplainInput) -> bool:
     return False
 
 
+def is_tenpai_dama_discard_turn(turn: TurnExplainInput) -> bool:
+    """Closed tenpai discard: Mortal cut a tile instead of declaring riichi.
+
+    Mahjong Soul still shows Riichi/Skip, but Mortal's top pick is dahai, so
+    Why? stays on Throw and should add Stay silent — not steal the riichi
+    template (that requires reach as best / next-best).
+    """
+    if is_call_decision_turn(turn):
+        return False
+    if is_hora_decision_turn(turn):
+        return False
+    if is_riichi_decision_turn(turn):
+        return False
+    if parse_action_kind(turn.mortal_best) != "dahai":
+        return False
+    statuses = turn.features.statuses
+    if statuses.riichi:
+        return False
+    if not statuses.menzen:
+        return False
+    if not (statuses.tenpai or turn.features.shanten == 0):
+        return False
+    return True
+
+
 def is_hora_decision_turn(turn: TurnExplainInput) -> bool:
-    """True when Why? should use Take the win voice (hora / agari)."""
+    """True when Why? should use Ron / Tsumo — take the win voice (hora / agari)."""
     if is_call_decision_turn(turn):
         return False
     if is_hora_decision_action(turn.mortal_best):

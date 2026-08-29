@@ -11,6 +11,7 @@ from shanten_sensei.live import (
     is_call_decision_turn,
     is_hora_decision_turn,
     is_riichi_decision_turn,
+    is_tenpai_dama_discard_turn,
     next_best_action,
 )
 from shanten_sensei.schema import Explanation, TurnExplainInput
@@ -266,6 +267,8 @@ def _feature_anchors_in_summary(turn: TurnExplainInput, summary_l: str) -> list[
         or re.search(r"\bedge\b", summary_l)
         or re.search(r"\bkanchan\b", summary_l)
         or re.search(r"\bpenchan\b", summary_l)
+        or re.search(r"\bextra tile on the (?:high|low) end\b", summary_l)
+        or re.search(r"\bpart of that sequence\b", summary_l)
     ):
         anchors.append("hand_shape_note")
 
@@ -280,7 +283,7 @@ def _feature_anchors_in_summary(turn: TurnExplainInput, summary_l: str) -> list[
         or re.search(r"\bcan'?t\s+ron\b", summary_l)
         or (
             re.search(r"\balready\s+discarded\b", summary_l)
-            and not re.search(r"\bfuriten\b", summary_l)
+            and not _furiten_teaching_in_summary(summary_l)
         )
     ):
         anchors.append("danger")
@@ -341,6 +344,8 @@ def _bare_contrasted_discard_summary(
         "floating",
         "genbutsu",
         "already discarded",
+        "already threw",
+        "can't win from a discard",
         "can't ron",
         "cant ron",
         "suji",
@@ -436,6 +441,19 @@ def _tile_claim_label_pattern(tile: str) -> str:
     )
 
 
+def _furiten_teaching_in_summary(summary_l: str) -> bool:
+    """True when the tip is explaining your own discarded wait, not genbutsu."""
+    return bool(
+        re.search(r"\bfuriten\b", summary_l)
+        or re.search(
+            r"can'?t win from (?:anyone else'?s |a )?discard",
+            summary_l,
+        )
+        or re.search(r"\balready threw\b", summary_l)
+        or re.search(r"drawing it (?:yourself )?still works", summary_l)
+    )
+
+
 def _tile_claimed_as_genbutsu_safe(summary_l: str, tile: str) -> bool:
     """True when prose attributes genbutsu / already-discarded safety to tile."""
     label = _tile_claim_label_pattern(tile)
@@ -453,7 +471,7 @@ def _tile_claimed_as_genbutsu_safe(summary_l: str, tile: str) -> bool:
     if re.search(
         rf"{label}\s+is\s+[^.]*\balready\s+(?:been\s+)?(?:played|discarded)\b",
         summary_l,
-    ) and not re.search(r"\bfuriten\b", summary_l):
+    ) and not _furiten_teaching_in_summary(summary_l):
         # Template: "2-man is genbutsu (safe — already discarded)"
         if re.search(
             rf"{label}\s+is\s+[^.]*\b(?:genbutsu|safe)\b",
@@ -461,8 +479,8 @@ def _tile_claimed_as_genbutsu_safe(summary_l: str, tile: str) -> bool:
         ):
             return True
     # Teaching voice: "already discarded East" / "can't ron East"
-    # (exclude furiten: "you already discarded 7-sou, so you can't win on…")
-    if not re.search(r"\bfuriten\b", summary_l):
+    # (exclude furiten: "you already threw 7-sou, so you can't win from a discard")
+    if not _furiten_teaching_in_summary(summary_l):
         if re.search(
             rf"\balready\s+(?:been\s+)?(?:played|discarded)\s+{label}\b",
             summary_l,
@@ -498,8 +516,8 @@ def _false_genbutsu_error(turn: TurnExplainInput, summary_l: str) -> str | None:
     has_already_played = bool(
         re.search(r"\balready\s+been\s+played\b", summary_l)
     )
-    # Furiten tips also say "already discarded" / "can't win on" — ignore those.
-    has_furiten = bool(re.search(r"\bfuriten\b", summary_l))
+    # Furiten tips also say "already threw" / "can't win from a discard".
+    has_furiten = _furiten_teaching_in_summary(summary_l)
     has_already_discarded = bool(
         re.search(r"\balready\s+discarded\b", summary_l)
     ) and not has_furiten
@@ -743,7 +761,7 @@ _CUT_NOTE_TILE_CLAIM_PATTERNS: tuple[tuple[str, tuple[str, ...]], ...] = (
         "isolated_penchan",
         (
             r"isolated\s+penchan",
-            r"(?:an?\s+)?edge(?:\s*\([^)]*\))?\s+shape",
+            r"edge(?:\s*\([^)]*\))?(?:\s+shape)?",
         ),
     ),
 )
@@ -789,7 +807,7 @@ def _false_cut_note_tile_error(
     if not re.search(
         r"\b(?:dead[-\s]?end|floating\s+honor|floating\s+terminal|"
         r"isolated\s+kanchan|isolated\s+penchan|closed\s+middle|"
-        r"edge\s*\([^)]*\)\s+shape|edge\s+shape)\b",
+        r"edge\s*\([^)]*\)(?:\s+shape)?|edge\s+shape|penchan)\b",
         summary_l,
     ):
         return None
@@ -889,6 +907,12 @@ def _action_lead_polarity_error(
                     return "action_lead_polarity_inverted"
         return None
 
+    if is_tenpai_dama_discard_turn(turn):
+        for m in re.finditer(r"\bdeclare riichi\b", summary_l):
+            if not _negated_before(summary_l, m.start()):
+                return "action_lead_polarity_inverted"
+        return None
+
     return None
 
 
@@ -949,6 +973,10 @@ def _rule_isolated_shape(turn, summary_l, explanation):
     return _isolated_shape_on_cut_error(turn, summary_l)
 
 
+def _rule_sequence_protrusion(turn, summary_l, explanation):
+    return _sequence_protrusion_error(turn, summary_l)
+
+
 def _rule_call_kind(turn, summary_l, explanation):
     return _call_kind_mismatch_error(turn, summary_l)
 
@@ -967,6 +995,7 @@ GROUNDING_RULES: tuple[GroundingRule, ...] = (
     GroundingRule("action_lead_polarity_inverted", _rule_action_lead),
     GroundingRule("wall_jargon", _rule_wall_jargon),
     GroundingRule("isolated_shape_on_cut_phrasing", _rule_isolated_shape),
+    GroundingRule("sequence_protrusion", _rule_sequence_protrusion),
     GroundingRule("call_kind_mismatch", _rule_call_kind),
 )
 
@@ -1043,6 +1072,49 @@ def validate_explanation(turn: TurnExplainInput, explanation: Explanation) -> li
         errors.append("thin_efficiency_claim")
 
     return errors
+
+
+def _sequence_protrusion_error(
+    turn: TurnExplainInput, summary_l: str
+) -> str | None:
+    """Require extra-on-sequence claims to match sequence_protrusion notes."""
+    claim = re.search(
+        r"extra tile on the (high|low) end of (\d)[–-](\d)[–-](\d)",
+        summary_l,
+    )
+    notes = [
+        n
+        for n in turn.features.hand_shape_notes
+        if n.kind == "sequence_protrusion"
+    ]
+    if claim and not notes:
+        return "summary claims sequence protrusion without hand_shape_note"
+    if not notes:
+        return None
+    for note in notes:
+        if not note.sequence or note.sequence_end not in ("high", "low"):
+            continue
+        ranks = note.sequence.replace("–", "-").split("-")
+        if len(ranks) != 3:
+            continue
+        seq_pat = rf"{ranks[0]}[–-]{ranks[1]}[–-]{ranks[2]}"
+        cut_label = _tile_claim_label_pattern(note.tile)
+        if not re.search(
+            rf"{cut_label}\s+is the extra tile on the {note.sequence_end} end of {seq_pat}",
+            summary_l,
+        ):
+            continue
+        if note.keep_tile:
+            keep_label = _tile_claim_label_pattern(note.keep_tile)
+            if re.search(r"part of that sequence", summary_l) and not re.search(
+                rf"{keep_label}\s+is part of that sequence",
+                summary_l,
+            ):
+                return "summary names the wrong tile as part of the sequence"
+        return None
+    if claim:
+        return "summary sequence protrusion does not match hand_shape_note"
+    return None
 
 
 def _isolated_shape_on_cut_error(

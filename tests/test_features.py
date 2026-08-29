@@ -219,6 +219,78 @@ def test_infer_isolated_kanchan_cut():
     assert notes[0].tile == "2m"
 
 
+def test_infer_sequence_protrusion_high_end():
+    hand = [
+        "2m", "4m", "8m", "8m",
+        "5p", "6p", "6p", "7p",
+        "5s", "6s", "6s", "7s", "8s", "8s",
+    ]
+    notes = infer_hand_shape_notes(
+        hand, cut_tile="8s", alt_tile="5s", shape_goals=[], shanten=1
+    )
+    assert len(notes) == 1
+    note = notes[0]
+    assert note.kind == "sequence_protrusion"
+    assert note.tile == "8s"
+    assert note.keep_tile == "5s"
+    assert note.sequence == "5-6-7"
+    assert note.sequence_end == "high"
+
+
+def test_infer_sequence_protrusion_low_end():
+    hand = [
+        "2m", "4m", "8m", "8m",
+        "5p", "6p", "7p", "9p",
+        "4s", "5s", "6s", "6s", "7s", "2p",
+    ]
+    notes = infer_hand_shape_notes(
+        hand, cut_tile="4s", alt_tile="7s", shape_goals=[], shanten=1
+    )
+    assert len(notes) == 1
+    note = notes[0]
+    assert note.kind == "sequence_protrusion"
+    assert note.tile == "4s"
+    assert note.keep_tile == "7s"
+    assert note.sequence == "5-6-7"
+    assert note.sequence_end == "low"
+
+
+def test_infer_sequence_protrusion_skips_non_adjacent_span_ends():
+    hand = [
+        "2m", "4m", "8m", "8m",
+        "5p", "6p", "7p", "9p",
+        "4s", "5s", "6s", "7s", "8s", "3p",
+    ]
+    notes = infer_hand_shape_notes(
+        hand, cut_tile="4s", alt_tile="8s", shape_goals=[], shanten=1
+    )
+    assert not any(n.kind == "sequence_protrusion" for n in notes)
+
+
+def test_infer_sequence_protrusion_requires_same_suit_alt():
+    hand = [
+        "2m", "4m", "8m", "8m",
+        "5p", "6p", "6p", "7p",
+        "5s", "6s", "6s", "7s", "8s", "8s",
+    ]
+    notes = infer_hand_shape_notes(
+        hand, cut_tile="8s", alt_tile="5p", shape_goals=[], shanten=1
+    )
+    assert not any(n.kind == "sequence_protrusion" for n in notes)
+
+
+def test_extract_features_sequence_protrusion():
+    hand = [
+        "2m", "4m", "8m", "8m",
+        "5p", "6p", "6p", "7p",
+        "5s", "6s", "6s", "7s", "8s", "8s",
+    ]
+    feats = extract_features(
+        hand, ukeire_after_discard="8s", ukeire_alt_after_discard="5s"
+    )
+    assert any(n.kind == "sequence_protrusion" for n in feats.hand_shape_notes)
+
+
 def test_infer_dead_end_when_no_goals():
     hand = [
         "1m", "2m", "3m",

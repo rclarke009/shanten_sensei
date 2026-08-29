@@ -323,6 +323,7 @@ A beginner can play a practice game, open a review (or press **Why?**), and get 
 
 Phase 1 ready (post-game explainer + local review UI). Phase 2 live overlay is in the sibling fork.
 
+- **Feature wishlist:** [`docs/feature-wishlist.md`](docs/feature-wishlist.md)
 - **Live play how-to:** [`docs/live-setup.md`](docs/live-setup.md)
 - Contract: [`docs/phase1-contract.md`](docs/phase1-contract.md)
 - Phase 2 live contract: [`docs/phase2-kickoff.md`](docs/phase2-kickoff.md)

@@ -7,6 +7,7 @@ from shanten_sensei.explain import (
     explain,
     template_explain,
     validate_explanation,
+    build_user_payload,
 )
 from shanten_sensei.features import (
     build_call_tradeoff,
@@ -351,3 +352,56 @@ def test_grounding_rejects_pon_verb_when_chi_best():
     )
     errors = validate_explanation(turn, bad)
     assert any("call kind" in e for e in errors)
+
+
+def test_table_tips_off_by_default_on_call():
+    turn = turn_from_live(
+        hand=["1m", "2m", "3m", "4p", "5p", "6p", "7s", "8s", "9s", "W", "W", "N", "P"],
+        recommended={"type": "pon", "pai": "W", "consumed": ["W", "W"]},
+        candidates=candidates_from_meta_options([("pon", 0.9), ("none", 0.1)]),
+        call_tile="W",
+        call_consumed=["W", "W"],
+    )
+    off = template_explain(turn)
+    assert "at a real table" not in off.summary.lower()
+    assert "table_procedure" not in build_user_payload(turn)
+
+    on = template_explain(turn, include_table_tips=True)
+    assert "at a real table" in on.summary.lower()
+    assert "two" in on.summary.lower()
+    assert "west" in on.summary.lower()
+    assert "whoever discarded" in on.summary.lower()
+    assert validate_explanation(turn, on) == []
+    stamped = turn.model_copy(
+        update={
+            "features": turn.features.model_copy(
+                update={
+                    "context": {**turn.features.context, "include_table_tips": True}
+                }
+            )
+        }
+    )
+    assert "table_procedure" in build_user_payload(stamped)
+
+
+def test_table_tips_chi_names_hand_tiles():
+    turn = turn_from_path(FIXTURES_ROOT / "diverge_005" / "entry.json")
+    assert turn.mortal_best.startswith("chi")
+    result = template_explain(turn, include_table_tips=True)
+    assert "at a real table" in result.summary.lower()
+    assert "4-5-6" in result.summary
+    assert "your left" in result.summary.lower()
+    assert validate_explanation(turn, result) == []
+
+
+def test_table_tips_skip_never_teaches_placement():
+    turn = turn_from_live(
+        hand=SKIP_PON_HAND,
+        recommended="none",
+        candidates=candidates_from_meta_options([("none", 0.99), ("pon", 0.01)]),
+        call_tile="3s",
+        visible_discards={"2": ["3s"]},
+    )
+    result = template_explain(turn, include_table_tips=True)
+    assert "Skip" in result.summary
+    assert "at a real table" not in result.summary.lower()

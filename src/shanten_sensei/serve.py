@@ -15,6 +15,7 @@ from shanten_sensei.explain import (
     _furiten_blocking_tiles,
     coaching_shape_goals,
     explain,
+    hora_coach_label,
     template_explain,
     validate_explanation,
 )
@@ -33,7 +34,7 @@ from shanten_sensei.glosses import (
 )
 from shanten_sensei.ingest import DivergeTurn, diverge_turns_from_path, load_json
 from shanten_sensei.schema import Explanation, TurnExplainInput
-from shanten_sensei.tiles import coach_action_label
+from shanten_sensei.tiles import coach_action_label, is_hora_decision_action
 
 EXPLAIN_PATH_RE = re.compile(r"^/api/explain/(\d+)$")
 ExplainSource = Literal["llm", "template"]
@@ -51,17 +52,29 @@ def _parse_known_terms(qs: dict[str, list[str]]) -> list[str]:
     return out
 
 
-def _parse_score_tips(qs: dict[str, list[str]], body: dict[str, Any] | None = None) -> bool:
-    """Opt-in point tips via score_tips=1 / true (query or JSON body). Default off."""
-    if body and "score_tips" in body:
-        raw = body["score_tips"]
+def _parse_bool_flag(
+    name: str, qs: dict[str, list[str]], body: dict[str, Any] | None = None
+) -> bool:
+    """Opt-in flag via name=1 / true (query or JSON body). Default off."""
+    if body and name in body:
+        raw = body[name]
         if isinstance(raw, bool):
             return raw
         return str(raw).strip().lower() in ("1", "true", "yes", "on")
-    raw_list = qs.get("score_tips") or []
+    raw_list = qs.get(name) or []
     if not raw_list:
         return False
     return str(raw_list[0]).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _parse_score_tips(qs: dict[str, list[str]], body: dict[str, Any] | None = None) -> bool:
+    """Opt-in point tips via score_tips=1 / true (query or JSON body). Default off."""
+    return _parse_bool_flag("score_tips", qs, body)
+
+
+def _parse_table_tips(qs: dict[str, list[str]], body: dict[str, Any] | None = None) -> bool:
+    """Opt-in real-table tips via table_tips=1 / true. Default off."""
+    return _parse_bool_flag("table_tips", qs, body)
 
 
 def resolve_web_dir() -> Path:
@@ -147,11 +160,13 @@ class ReviewSession:
         mode: ExplainSource = "template",
         known_terms: list[str] | None = None,
         include_score_tips: bool = False,
+        include_table_tips: bool = False,
     ) -> dict[str, Any]:
         known = normalize_known_terms(known_terms)
         known_key = tuple(sorted(known))
         score_tips = bool(include_score_tips)
-        cache_key = (index, mode, known_key, score_tips)
+        table_tips = bool(include_table_tips)
+        cache_key = (index, mode, known_key, score_tips, table_tips)
         if cache_key in self._cache:
             return self._cache[cache_key]
         diverge = self._by_index.get(index)
@@ -163,6 +178,7 @@ class ReviewSession:
                 diverge.turn,
                 known_terms=known,
                 include_score_tips=score_tips,
+                include_table_tips=table_tips,
             )
             source: ExplainSource = "template"
             errors = validate_explanation(diverge.turn, explanation)
@@ -174,6 +190,7 @@ class ReviewSession:
                         diverge.turn,
                         known_terms=known,
                         include_score_tips=score_tips,
+                        include_table_tips=table_tips,
                     )
                 except TypeError:
                     try:
@@ -188,6 +205,7 @@ class ReviewSession:
                         diverge.turn,
                         known_terms=known,
                         include_score_tips=score_tips,
+                        include_table_tips=table_tips,
                     )
                 else:
                     explanation = llm_explanation
@@ -204,6 +222,7 @@ class ReviewSession:
                     use_llm=True,
                     known_terms=list(known),
                     include_score_tips=score_tips,
+                    include_table_tips=table_tips,
                 )
                 errors = validate_explanation(diverge.turn, explanation)
             source = "llm"
@@ -214,6 +233,7 @@ class ReviewSession:
             "grounding_errors": errors,
             "known_terms": sorted(known),
             "score_tips": score_tips,
+            "table_tips": table_tips,
         }
         self._cache[cache_key] = payload
         return payload
@@ -236,8 +256,16 @@ class ReviewSession:
                 "junme": d.junme,
                 "mortal_best": turn.mortal_best,
                 "player_action": turn.player_action,
-                "mortal_best_label": coach_action_label(turn.mortal_best),
-                "player_action_label": coach_action_label(turn.player_action),
+                "mortal_best_label": (
+                    hora_coach_label(turn)
+                    if is_hora_decision_action(turn.mortal_best)
+                    else coach_action_label(turn.mortal_best)
+                ),
+                "player_action_label": (
+                    hora_coach_label(turn)
+                    if is_hora_decision_action(turn.player_action)
+                    else coach_action_label(turn.player_action)
+                ),
                 "shanten": shanten,
                 "shanten_label": glossed_shanten(shanten, known_terms=known),
                 "ukeire": turn.features.ukeire.count,
@@ -333,12 +361,14 @@ def make_handler(
                                 p.strip() for p in raw.split(",") if p.strip()
                             ]
             score_tips = _parse_score_tips(qs, body)
+            table_tips = _parse_table_tips(qs, body)
             try:
                 payload = session.explain_index(
                     index,
                     mode=mode,
                     known_terms=known,
                     include_score_tips=score_tips,
+                    include_table_tips=table_tips,
                 )
             except KeyError:
                 self._json(404, {"error": f"diverge index {index} not found"})

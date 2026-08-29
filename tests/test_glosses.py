@@ -87,15 +87,20 @@ def test_danger_gloss():
 
 
 def test_glossed_furiten():
-    assert glossed_furiten() == "not furiten"
-    assert "tsumo" in glossed_furiten(furiten=True).lower()
-    assert "discard" in glossed_furiten(furiten=True).lower()
-    assert "passed" in glossed_furiten(temporary=True).lower()
+    assert glossed_furiten() == ""
+    assert glossed_furiten(furiten=True) == "can’t win on discard"
+    assert "tsumo" not in glossed_furiten(furiten=True).lower()
+    assert glossed_furiten(furiten=True, known_terms={"furiten"}) == "furiten"
+    assert glossed_furiten(temporary=True) == "passed a win this turn"
+    assert glossed_furiten(temporary=True, known_terms={"temp_furiten"}) == (
+        "temp furiten"
+    )
 
 
 def test_shape_note_gloss():
     assert "lone 1/9" in SHAPE_NOTE_GLOSS["floating_terminal"]
     assert "closed middle" in SHAPE_NOTE_GLOSS["isolated_kanchan"]
+    assert "extra tile" in SHAPE_NOTE_GLOSS["sequence_protrusion"]
     assert "dead-end" in SHAPE_NOTE_GLOSS["dead_end"] or "connects" in SHAPE_NOTE_GLOSS[
         "dead_end"
     ]

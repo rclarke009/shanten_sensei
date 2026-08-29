@@ -346,6 +346,8 @@ def test_build_detail_paragraph_ukeire_danger_score():
     assert detail is not None
     assert "improving tiles" in detail
     assert "vs about" in detail
+    assert "mortal" not in detail.lower()
+    assert "This discard leaves" in detail
     assert "suji" in detail
     # Cut-only: do not catalogue other danger tiles.
     assert "one-chance" not in detail
@@ -364,8 +366,8 @@ def test_merge_skips_mortal_cut_ukeire_when_tiles_that_can_improve():
         "9-sou is a floating terminal."
     )
     detail = (
-        "Mortal's cut leaves about 60 improving tiles vs about 57 on the "
-        "alternative. 9-sou — lone 1/9 with no connector. you're even on points."
+        "This discard leaves about 60 improving tiles left vs about 57 "
+        "if you throw 1-man. 9-sou — lone 1/9 with no connector. you're even on points."
     )
     merged = _merge_detail_into_summary(summary, detail)
     merged_l = merged.lower()
@@ -385,8 +387,8 @@ def test_merge_skips_mortal_cut_ukeire_when_glossed_ukeire_phrase():
         "1-pin is a dead-end tile."
     )
     detail = (
-        "Mortal's cut leaves about 58 improving tiles vs about 56 on the "
-        "alternative. 1-pin — connects to nothing useful."
+        "This discard leaves about 58 improving tiles left vs about 56 "
+        "if you throw 9-man. 1-pin — connects to nothing useful."
     )
     merged = _merge_detail_into_summary(summary, detail)
     merged_l = merged.lower()

@@ -647,6 +647,49 @@ def test_grounding_rejects_isolated_kanchan_on_wrong_tile():
     assert any("yakuhai_pairs" in e or "pair of" in e for e in errors)
 
 
+def test_grounding_rejects_invented_sequence_protrusion():
+    turn = make_turn(mortal_best="dahai 8s", player_action="dahai 5s", diverge=True)
+    bad = Explanation(
+        summary=(
+            "Throw 8-sou, not 5-sou. 8-sou is the extra tile on the high end "
+            "of 5–6–7; 5-sou is part of that sequence. You're 1-shanten "
+            "(1 step from ready) with about 14 ukeire (tiles that improve the hand)."
+        ),
+        focus="efficiency",
+        pinned_action="dahai 8s",
+        contrasted_action="dahai 5s",
+    )
+    errors = validate_explanation(turn, bad)
+    assert any("sequence protrusion" in e for e in errors)
+
+
+def test_grounding_accepts_sequence_protrusion_note():
+    turn = make_turn(mortal_best="dahai 8s", player_action="dahai 5s", diverge=True)
+    turn.features.hand_shape_notes = [
+        HandShapeNote(
+            kind="sequence_protrusion",
+            tile="8s",
+            keep_tile="5s",
+            sequence="5-6-7",
+            sequence_end="high",
+        )
+    ]
+    turn.features.shanten = 1
+    turn.features.statuses.shanten = 1
+    turn.features.ukeire = UkeireInfo(count=14, tiles=["3m"])
+    ok = Explanation(
+        summary=(
+            "Throw 8-sou, not 5-sou. 8-sou is the extra tile on the high end "
+            "of 5–6–7; 5-sou is part of that sequence. You're 1-shanten "
+            "(1 step from ready) with about 14 ukeire (tiles that improve the hand)."
+        ),
+        focus="efficiency",
+        pinned_action="dahai 8s",
+        contrasted_action="dahai 5s",
+    )
+    assert validate_explanation(turn, ok) == []
+
+
 def test_grounding_rules_registry_is_unique():
     rule_ids = [rule.id for rule in GROUNDING_RULES]
     assert len(rule_ids) == len(set(rule_ids))

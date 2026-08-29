@@ -52,7 +52,10 @@ HandShapeNoteKind = Literal[
     "isolated_kanchan",
     "isolated_penchan",
     "dead_end",
+    "sequence_protrusion",
 ]
+
+SequenceEnd = Literal["high", "low"]
 
 
 class HandShapeNote(BaseModel):
@@ -60,6 +63,15 @@ class HandShapeNote(BaseModel):
 
     kind: HandShapeNoteKind
     tile: str
+    keep_tile: str | None = Field(
+        default=None,
+        description="Contrasted tile that sits inside the 3-tile sequence",
+    )
+    sequence: str | None = Field(
+        default=None,
+        description="Three consecutive ranks, e.g. 5-6-7",
+    )
+    sequence_end: SequenceEnd | None = None
 
 
 class ScoreSituation(BaseModel):

@@ -97,8 +97,8 @@ def test_live_declare_riichi_mentions_furiten_tsumo_only():
     result = template_explain(turn)
     assert "Declare riichi" in result.summary
     assert "9-pin" in result.summary.lower()
-    assert "furiten" in result.summary
-    assert "tsumo" in result.summary.lower()
+    assert "already threw" in result.summary.lower()
+    assert "can’t win from a discard" in result.summary.lower()
     assert validate_explanation(turn, result) == []
 
 
@@ -187,3 +187,81 @@ def test_dahai_with_low_prob_reach_stays_throw():
     assert not is_riichi_decision_turn(turn)
     result = template_explain(turn)
     assert "Throw" in result.summary
+    assert "Stay silent" in result.summary
+    assert "Declare riichi" not in result.summary
+    assert validate_explanation(turn, result) == []
+
+
+def test_tenpai_dahai_without_reach_candidate_still_stay_silent():
+    """Closed tenpai + Throw: still name dama when Mortal only ranked tiles."""
+    turn = turn_from_live(
+        hand=RIICHI_HAND,
+        recommended="dahai 9p",
+        candidates=candidates_from_meta_options([("9p", 0.8), ("5m", 0.2)]),
+    )
+    assert not is_riichi_decision_turn(turn)
+    result = template_explain(turn)
+    assert "Throw" in result.summary
+    assert "Stay silent" in result.summary
+    assert validate_explanation(turn, result) == []
+    payload = build_user_payload(turn)
+    assert payload["dama_discard_tenpai"] is True
+
+
+def test_already_riichi_dahai_skips_stay_silent():
+    turn = turn_from_live(
+        hand=RIICHI_HAND,
+        recommended="dahai 9p",
+        candidates=candidates_from_meta_options([("9p", 0.8), ("5m", 0.2)]),
+        riichi=True,
+    )
+    result = template_explain(turn)
+    assert "Stay silent" not in result.summary
+    assert "Throw" in result.summary
+    assert build_user_payload(turn)["dama_discard_tenpai"] is False
+
+
+def test_dama_discard_rejects_declare_riichi_polarity():
+    turn = turn_from_live(
+        hand=RIICHI_HAND,
+        recommended="dahai 9p",
+        candidates=candidates_from_meta_options([("9p", 0.8), ("5m", 0.2)]),
+    )
+    bad = Explanation(
+        summary="Throw 9-pin, not 5-man. Declare riichi.",
+        focus="efficiency",
+        pinned_action="dahai 9p",
+        contrasted_action="dahai 5m",
+    )
+    assert "action_lead_polarity_inverted" in validate_explanation(turn, bad)
+
+
+def test_table_tips_declare_riichi_cut_tile():
+    turn = turn_from_live(
+        hand=RIICHI_HAND_RED_SOU,
+        recommended={
+            "type": "reach",
+            "reach_dahai": {"type": "dahai", "pai": "5sr"},
+        },
+        candidates=candidates_from_meta_options([("reach", 0.85), ("none", 0.15)]),
+    )
+    off = template_explain(turn)
+    assert "at a real table" not in off.summary.lower()
+    on = template_explain(turn, include_table_tips=True)
+    assert "at a real table" in on.summary.lower()
+    assert "stick" in on.summary.lower()
+    assert "sideways" in on.summary.lower()
+    assert "red 5-sou" in on.summary.lower()
+    assert validate_explanation(turn, on) == []
+
+
+def test_table_tips_stay_silent_omits_placement():
+    turn = turn_from_live(
+        hand=RIICHI_HAND,
+        recommended="none",
+        candidates=candidates_from_meta_options([("none", 0.7), ("reach", 0.3)]),
+        discards=["5m"],
+    )
+    result = template_explain(turn, include_table_tips=True)
+    assert "Stay silent" in result.summary
+    assert "at a real table" not in result.summary.lower()

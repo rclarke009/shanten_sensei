@@ -728,6 +728,65 @@ def _looks_like_pinfu(
     return False
 
 
+def _number_suit(tile: str) -> tuple[int, str] | None:
+    try:
+        base = deaka(normalize_tile(tile))
+    except ValueError:
+        return None
+    if len(base) < 2 or not base[0].isdigit() or base[1] not in "mps":
+        return None
+    return int(base[0]), base[1]
+
+
+def _sequence_protrusion_note(
+    counts: list[int], cut_tile: str, alt_tile: str
+) -> HandShapeNote | None:
+    """Cut is adjacent extra on a 3-run that contains the contrasted tile.
+
+    Under-tags when more than one such 3-run exists (e.g. throwing 4 vs 8
+    from 4-5-6-7-8). Requires the keep tile inside the sequence and the cut
+    strictly outside it.
+    """
+    parsed_cut = _number_suit(cut_tile)
+    parsed_alt = _number_suit(alt_tile)
+    if parsed_cut is None or parsed_alt is None:
+        return None
+    cut_n, suit = parsed_cut
+    alt_n, alt_suit = parsed_alt
+    if suit != alt_suit or cut_n == alt_n:
+        return None
+
+    def rank_count(n: int) -> int:
+        if n < 1 or n > 9:
+            return 0
+        return counts[tile_to_34(f"{n}{suit}")]
+
+    if rank_count(cut_n) < 1 or rank_count(alt_n) < 1:
+        return None
+
+    matches: list[tuple[str, tuple[int, int, int]]] = []
+    for n in range(1, 8):
+        if rank_count(n) < 1 or rank_count(n + 1) < 1 or rank_count(n + 2) < 1:
+            continue
+        seq = (n, n + 1, n + 2)
+        if alt_n not in seq or cut_n in seq:
+            continue
+        if cut_n == n - 1:
+            matches.append(("low", seq))
+        elif cut_n == n + 3:
+            matches.append(("high", seq))
+    if len(matches) != 1:
+        return None
+    end, seq = matches[0]
+    return HandShapeNote(
+        kind="sequence_protrusion",
+        tile=deaka(normalize_tile(cut_tile)),
+        keep_tile=deaka(normalize_tile(alt_tile)),
+        sequence=f"{seq[0]}-{seq[1]}-{seq[2]}",
+        sequence_end="high" if end == "high" else "low",
+    )
+
+
 def infer_hand_shape_notes(
     hand: list[str],
     *,
@@ -735,6 +794,7 @@ def infer_hand_shape_notes(
     shape_goals: list[str] | None = None,
     shanten: int | None = None,
     max_notes: int = 2,
+    alt_tile: str | None = None,
 ) -> list[HandShapeNote]:
     """Conservative mid-hand tags for why Mortal's cut is dead wood.
 
@@ -759,6 +819,12 @@ def infer_hand_shape_notes(
 
     goals = list(shape_goals or [])
     notes: list[HandShapeNote] = []
+
+    if alt_tile:
+        extra = _sequence_protrusion_note(counts, base, alt_tile)
+        if extra is not None:
+            notes.append(extra)
+            return notes[:max_notes]
 
     if _is_isolated_kanchan_cut(counts, base):
         notes.append(HandShapeNote(kind="isolated_kanchan", tile=base))
@@ -992,11 +1058,24 @@ def extract_features(
 
     # Notes describe the cut tile in the pre-discard hand (14-tile when known).
     note_hand = hand if is_14 and mortal_discard is not None else shape_hand
+    alt_for_notes: str | None = None
+    if alt_discard is not None and is_14:
+        try:
+            same_cut = (
+                mortal_discard is not None
+                and deaka(normalize_tile(alt_discard))
+                == deaka(normalize_tile(mortal_discard))
+            )
+        except ValueError:
+            same_cut = False
+        if not same_cut:
+            alt_for_notes = alt_discard
     hand_shape_notes = infer_hand_shape_notes(
         note_hand,
         cut_tile=mortal_discard or ukeire_after_discard,
         shape_goals=shape_goals,
         shanten=statuses.shanten,
+        alt_tile=alt_for_notes,
     )
 
     return DerivedFeatures(

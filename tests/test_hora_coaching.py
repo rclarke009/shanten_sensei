@@ -3,6 +3,7 @@
 from shanten_sensei.explain import (
     build_user_payload,
     coaching_shape_goals,
+    hora_coach_label,
     template_explain,
     validate_explanation,
 )
@@ -94,7 +95,17 @@ def _ron_hora_turn(
     )
 
 
-def test_coach_action_label_take_the_win():
+def test_hora_coach_label_ron_and_tsumo():
+    ron = _ron_hora_turn(raw_expected={"type": "hora", "pai": "2s"})
+    assert hora_coach_label(ron).startswith("Ron")
+    assert "2-sou" in hora_coach_label(ron)
+    assert "take the win" in hora_coach_label(ron)
+    tsumo = turn_from_live(
+        hand=HORA_HAND,
+        recommended="hora",
+        candidates=candidates_from_meta_options([("hora", 0.95), ("none", 0.05)]),
+    )
+    assert hora_coach_label(tsumo) == "Tsumo — take the win"
     assert coach_action_label("hora") == "Take the win"
     assert is_hora_decision_action("hora")
 
@@ -111,7 +122,7 @@ def test_live_hora_voice():
     assert is_hora_decision_turn(turn)
     result = template_explain(turn)
     assert "Throw" not in result.summary
-    assert "Take the win" in result.summary
+    assert "Tsumo — take the win" in result.summary
     assert "hora" not in result.summary.lower()
     assert "tenpai" not in result.summary.lower()
     assert "complete" in result.summary.lower() or "winning" in result.summary.lower()
@@ -129,6 +140,8 @@ def test_hora_ron_says_win_on_not_waiting():
     assert is_hora_decision_turn(turn)
     result = template_explain(turn)
     summary_l = result.summary.lower()
+    assert "ron" in summary_l
+    assert "2-sou" in summary_l or "2s" in summary_l
     assert "take the win" in summary_l
     assert "win on" in summary_l
     assert "2-sou" in summary_l or "2s" in summary_l
@@ -159,4 +172,4 @@ def test_hora_suppresses_aiming_for_shape_goals():
     assert payload["hora_decision"] is True
     assert payload["shape_goals"] == []
     assert payload["hand_metric_glossary"]["shanten"] == "winning hand"
-    assert payload["mortal_best_display"] == "Take the win"
+    assert payload["mortal_best_display"] == "Tsumo — take the win"

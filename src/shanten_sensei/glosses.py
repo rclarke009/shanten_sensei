@@ -40,6 +40,7 @@ SHAPE_NOTE_GLOSS: dict[str, str] = {
     "isolated_kanchan": "closed middle fragment",
     "isolated_penchan": "edge wait fragment",
     "dead_end": "connects to nothing useful",
+    "sequence_protrusion": "extra tile on the end of a 5–6–7",
 }
 
 # Shared teaching gloss for ukeire / acceptances (same concept).
@@ -85,7 +86,7 @@ GLOSS_CHECKLIST: tuple[GlossChecklistItem, ...] = (
     GlossChecklistItem("ukeire", "Metrics", METRIC_GLOSS["ukeire"]),
     GlossChecklistItem("acceptances", "Metrics", METRIC_GLOSS["acceptances"]),
     GlossChecklistItem("dora", "Metrics", METRIC_GLOSS["dora"]),
-    GlossChecklistItem("furiten", "Status", "can’t win on discard — tsumo only"),
+    GlossChecklistItem("furiten", "Status", "can’t win on discard"),
     GlossChecklistItem("temp_furiten", "Status", "passed a win this turn"),
     *(GlossChecklistItem(k, "Shape notes", v) for k, v in SHAPE_NOTE_GLOSS.items()),
 )
@@ -166,16 +167,16 @@ def glossed_furiten(
     temporary: bool = False,
     known_terms: Collection[str] | None = None,
 ) -> str:
-    """Chip / status label for furiten (tsumo-only when permanent)."""
+    """Live/review chip: consequence first; empty when furiten is off."""
     if temporary:
         if term_is_known("temp_furiten", known_terms):
             return "temp furiten"
-        return "temp furiten (passed a win this turn)"
+        return "passed a win this turn"
     if furiten:
         if term_is_known("furiten", known_terms):
             return "furiten"
-        return "furiten (can’t win on discard — tsumo only)"
-    return "not furiten"
+        return "can’t win on discard"
+    return ""
 
 
 def glossed_shanten(

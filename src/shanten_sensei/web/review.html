@@ -358,6 +358,24 @@
     .score-tips-toggle input {
       accent-color: var(--accent);
     }
+    .advanced-tips {
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    .advanced-tips > summary {
+      cursor: pointer;
+      user-select: none;
+      list-style: none;
+    }
+    .advanced-tips > summary::-webkit-details-marker { display: none; }
+    .advanced-tips > summary::before { content: "▸ "; }
+    .advanced-tips[open] > summary::before { content: "▾ "; }
+    .advanced-tips .inner {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      margin: 0.35rem 0 0 0.6rem;
+    }
     button.why {
       appearance: none;
       border: 1px solid var(--accent);
@@ -510,6 +528,7 @@
       glossChecklist: [],
       knownTerms: loadKnownTerms(),
       scoreTips: false,
+      tableTips: false,
     };
 
     function knownTermsQs(prefix) {
@@ -658,18 +677,19 @@
       });
       const waitLabel = d.wait_shape_label || d.wait_shape || s.wait_shape;
       if (waitLabel) chips.push({ text: `wait ${waitLabel}`, on: true });
-      const furitenText =
-        d.furiten_label ||
-        (s.temporary_furiten
-          ? "temp furiten (passed a win this turn)"
-          : s.furiten
-            ? "furiten (can’t win on discard — tsumo only)"
-            : "not furiten");
-      chips.push({
-        text: furitenText,
-        on: !!(s.furiten || s.temporary_furiten),
-        warn: !!(s.furiten || s.temporary_furiten),
-      });
+      const furitenOn = !!(s.furiten || s.temporary_furiten);
+      if (furitenOn) {
+        const furitenText =
+          d.furiten_label ||
+          (s.temporary_furiten
+            ? "passed a win this turn"
+            : "can’t win on discard");
+        chips.push({
+          text: furitenText,
+          on: true,
+          warn: true,
+        });
+      }
 
       if (s.riichi) chips.push({ text: "riichi", on: true });
       if (s.ippatsu) chips.push({ text: "ippatsu", on: true });
@@ -825,17 +845,7 @@
         llmCached ? "Why? (cached)" : "Why?"
       );
 
-      const scoreTipsLabel = el(
-        "label",
-        { className: "score-tips-toggle" },
-        (() => {
-          const cb = el("input", {
-            type: "checkbox",
-            id: "score-tips-cb",
-          });
-          cb.checked = !!state.scoreTips;
-          cb.addEventListener("change", () => {
-            state.scoreTips = !!cb.checked;
+      const refetchTips = () => {
             const hadLlm = Object.keys(state.explanations).some((k) =>
               k.startsWith(`${d.index}:llm:`)
             );
@@ -848,10 +858,34 @@
             } else if (hadTemplate) {
               askWhy(d.index, "template", { silent: true }).catch(() => {});
             }
-          });
-          return cb;
-        })(),
-        " Point tips"
+      };
+
+      const makeTipsToggle = (id, flagKey, labelText) =>
+        el(
+          "label",
+          { className: "score-tips-toggle" },
+          (() => {
+            const cb = el("input", { type: "checkbox", id });
+            cb.checked = !!state[flagKey];
+            cb.addEventListener("change", () => {
+              state[flagKey] = !!cb.checked;
+              refetchTips();
+            });
+            return cb;
+          })(),
+          " " + labelText
+        );
+
+      const advancedTips = el(
+        "details",
+        { className: "advanced-tips" },
+        el("summary", {}, "Advanced"),
+        el(
+          "div",
+          { className: "inner" },
+          makeTipsToggle("score-tips-cb", "scoreTips", "Point tips"),
+          makeTipsToggle("table-tips-cb", "tableTips", "Table tips")
+        )
       );
 
       const boardInner = el("div", { className: "inner" });
@@ -887,8 +921,8 @@
         if (furiten) {
           const note =
             blocking.length > 0
-              ? `Furiten for ron — discarded ${blocking.join(", ")}; can’t win on any discard (tsumo only)`
-              : "Furiten for ron — can’t win on any discard (tsumo only)";
+              ? `Can’t win from a discard — you already threw ${blocking.join(", ")}; drawing still works`
+              : "Can’t win from a discard — drawing still works";
           boardInner.append(el("div", { className: "furiten-note" }, note));
         }
       }
@@ -911,7 +945,7 @@
         aiming,
         moves,
         el("div", { className: "section-label" }, "Yakuman says"),
-        el("div", { className: "why-actions" }, whyBtn, scoreTipsLabel, offlineWrap),
+        el("div", { className: "why-actions" }, whyBtn, advancedTips, offlineWrap),
         err,
         whyBox,
         boardDetails
@@ -1006,7 +1040,7 @@
     }
 
     function cacheKey(index, mode) {
-      return `${index}:${mode}:${knownTermsFingerprint()}:score${state.scoreTips ? 1 : 0}`;
+      return `${index}:${mode}:${knownTermsFingerprint()}:score${state.scoreTips ? 1 : 0}:table${state.tableTips ? 1 : 0}`;
     }
 
     function renderTermsChecklist() {
@@ -1123,6 +1157,7 @@
         const params = new URLSearchParams();
         if (mode === "template") params.set("mode", "template");
         if (state.scoreTips) params.set("score_tips", "1");
+        if (state.tableTips) params.set("table_tips", "1");
         const known = (state.knownTerms || []).slice().sort();
         if (known.length) params.set("known_terms", known.join(","));
         const qs = params.toString() ? `?${params.toString()}` : "";
@@ -1132,6 +1167,7 @@
           body: JSON.stringify({
             known_terms: state.knownTerms || [],
             score_tips: !!state.scoreTips,
+            table_tips: !!state.tableTips,
           }),
         });
         const data = await resp.json();

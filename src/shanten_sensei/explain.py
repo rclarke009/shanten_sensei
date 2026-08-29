@@ -42,6 +42,7 @@ from shanten_sensei.live import (
     is_call_decision_turn,
     is_hora_decision_turn,
     is_riichi_decision_turn,
+    is_tenpai_dama_discard_turn,
     next_best_action,
 )
 from shanten_sensei.grounding import (
@@ -89,9 +90,12 @@ wall_note (e.g. \"only 1 copy of red 5-pin is still unseen\").
 
 For discard tips, lead with \"Throw X\" or \"Throw X, not Y\" using \
 tile_glossary / coach_action labels (e.g. 🀅Hatsu, 🀔5-sou). When \
+dama_discard_tenpai is true (closed tenpai, mortal_best is dahai — Riichi/Skip \
+is on the table but Mortal is not declaring), add \"Stay silent—don’t declare \
+riichi yet\" after the Throw lead. Never \"Declare riichi\" on those turns. When \
 hand_shape_notes justify the recommended cut (floating honor/terminal, \
-dead-end, kanchan/penchan break-up), put that shape reason on the next line \
-before ukeire contrast or named improving tiles.
+dead-end, kanchan/penchan break-up, extra tile on a 5–6–7), put that shape \
+reason on the next line before ukeire contrast or named improving tiles.
 
 For call tips (mortal_best or contrast is none / pon / chi / kan — see \
 call_tradeoff), lead with \"Skip\" / \"Skip the pon on …\" / \"Skip the chi on …\" / \
@@ -105,6 +109,8 @@ aiming for closed-only yaku (pinfu, chiitoi / seven pairs)—cite tempo, \
 shanten, or call_tradeoff instead. On chi tips, name the sequence meld: \
 \"for 6-7-8 sou\" when call_consumed is known, or list all valid melds when \
 call_consumed is absent (e.g. \"you could meld 6-7-8 sou or 7-8-9 sou\").
+When table_procedure is present, add that one sentence (physical-tile placement). \
+Never invent table etiquette if the field is missing.
 
 Use \"open\" / \"closed\" only for called vs menzen (call tips / \
 call_tradeoff)—e.g. \"Calling would open the hand\" or \"You’re still … \
@@ -116,10 +122,12 @@ For riichi tips (riichi_decision true — reach vs none), lead with \
 \"Declare riichi\" / \"Stay silent\" — never \"Throw reach\" or \"Skip\". When \
 reach_discard is present, name that cut in the lead (e.g. \"Declare riichi, \
 discard red 5-sou\") — use \"discard\", not \"Throw\". Cite tenpai / wait \
-shape, furiten_blocking_tiles, dora_in_hand, or score_situation.
+shape, furiten_blocking_tiles, dora_in_hand, or score_situation. \
+When table_procedure is present on a declare, add that sentence.
 
 For hora tips (hora_decision true — winning on tsumo/ron), lead with \
-\"Take the win\" — never bare \"hora\" or \"Declare hora\". When shanten is -1, \
+\"Ron {tile} — take the win\" off a discard, or \"Tsumo — take the win\" on a \
+self-draw — never bare \"hora\" or \"Declare hora\". When shanten is -1, \
 say the hand is complete / a winning hand, not tenpai (ready). Do not invent \
 yaku aims for a finished hand. Never say \"Waiting on\" at hora — name the \
 winning tile with \"Win on {tile}\" and wait_shape_glossary when known; omit \
@@ -146,12 +154,16 @@ payload: shanten/acceptances (with hand_metric_glossary parentheticals), ukeire 
 tiles / remaining_by_tile, ukeire_alt, wall_note, wait shape (with \
 wait_shape_glossary parentheticals, e.g. \"ryanmen (two-sided open)\"), \
 shape_goals (with glossary parentheticals), hand_shape_notes (floating \
-terminal/honor, isolated kanchan/penchan, dead-end — these describe why the \
+terminal/honor, isolated kanchan/penchan, dead-end, sequence_protrusion — these describe why the \
 recommended cut is weak/useless and apply only to the recommended cut tile \
 named in those notes, e.g. \"North is a dead-end tile\", \
 \"9-pin is a floating terminal\", \"2-man breaks up a closed middle (kanchan) shape\" / \
-\"8-man breaks up an edge (penchan) shape\"; never attach those notes to the \
-alternate cut or another hand tile; never write \"kanchan/penchan/fragment on \
+\"1-man breaks up an edge (penchan) — a 1–2 only wants 3; a 4–5 wants 3 or 6\" / \
+\"8-man breaks up an edge (penchan) — an 8–9 only wants 7; a 5–6 wants 4 or 7\" / \
+\"8-sou is the extra tile on the high end of 5–6–7; 5-sou is part of that sequence\"; \
+never attach dead-end / floating / kanchan / penchan notes to the \
+alternate cut or another hand tile; sequence_protrusion may name keep_tile as \
+\"part of that sequence\" only; never write \"kanchan/penchan/fragment on \
 {tile}\" — that sounds like a wait; if naming both ends say \"6–8 kanchan\", never \
 \"kanchan on 8-man\"; never say you keep / maintain / preserve a dead-end, \
 floating, or isolated shape; never say \"better to keep it\" / \"keep it for \
@@ -215,6 +227,9 @@ Example mid-hand voice: \"• Throw 🀡9-pin, not 🀔5-sou.\\n• You’re 2-s
 from ready) with about 40 ukeire (tiles that improve the hand).\\n\\n• 🀡9-pin is \
 a floating terminal outside tanyao (2–8 only; no 1/9, winds, or dragons).\"
 
+Example sequence-extra voice: \"• Throw 🀗8-sou, not 🀔5-sou.\\n• 🀗8-sou is the extra \
+tile on the high end of 5–6–7; 🀔5-sou is part of that sequence.\"
+
 Example dead-end voice: \"• Throw 🀃North.\\n\\n• 🀃North is a dead-end tile—it connects \
 to nothing useful.\"
 
@@ -224,13 +239,13 @@ isn’t a value tile, while 🀄Chun can still pair.\"
 
 When statuses.wait_shape is set, name it with the wait_shape_glossary \
 parenthetical (e.g. \"ryanmen (two-sided open) wait\"). When statuses.furiten \
-is true, name furiten_blocking_tiles if present (tiles you already discarded \
-that are also waits) and explain that ron is blocked on every wait—you can \
-only win by tsumo (self-draw).
+is true, name furiten_blocking_tiles if present (a wait you already threw) and \
+say you can’t win from a discard—drawing it yourself still works. Do not \
+lecture on ron/tsumo jargon.
 
 Example tenpai voice: \"• Throw 🀊4-man, not 🀌6-man.\\n• That keeps a ryanmen \
-(two-sided open) wait.\\n\\n• You’re furiten—you already discarded 🀖7-sou, so you \
-can’t win on any discard (only tsumo).\"
+(two-sided open) wait.\\n\\n• You already threw 🀖7-sou, so you can’t win from a \
+discard—drawing it yourself still works.\"
 
 Example call voice: \"• Skip the pon on 🀒3-sou.\\n• You’re still 2-shanten (2 steps \
 from ready) closed with about 55 improving tiles.\\n\\n• Calling would open the \
@@ -248,7 +263,7 @@ already.\\n\\n• An opponent is in riichi—safety matters.\"
 Example riichi voice: \"• Declare riichi, discard 🀡9-pin.\\n• You’re tenpai (ready) \
 with a ryanmen (two-sided open) wait.\\n\\n• You have dora (bonus tile) in hand.\"
 
-Example hora voice: \"• Take the win.\\n• You’re complete (winning hand).\\n\\n• Win on \
+Example hora voice: \"• Ron 🀛2-sou — take the win.\\n• You’re complete (winning hand).\\n\\n• Win on \
 🀛2-sou (tanki (pair)).\\n• You have dora (bonus tile) in hand.\"
 
 Return JSON with exactly these keys:
@@ -320,7 +335,7 @@ def _ukeire_contrast_note_text(
     turn: TurnExplainInput, ukeire_count: int, alt_count: int
 ) -> str:
     alt_action = _contrast_alt_action(turn)
-    alt_label = human_action_label(alt_action) if alt_action else "the alternate cut"
+    alt_label = human_action_label(alt_action) if alt_action else "the other discard"
     return (
         f"about {ukeire_count} improving tiles left vs about {alt_count} "
         f"if you throw {alt_label}"
@@ -370,6 +385,11 @@ def _score_tips_enabled(turn: TurnExplainInput) -> bool:
     return bool(turn.features.context.get("include_score_tips"))
 
 
+def _table_tips_enabled(turn: TurnExplainInput) -> bool:
+    """Opt-in real-table placement tips (default off)."""
+    return bool(turn.features.context.get("include_table_tips"))
+
+
 def _known_terms_from_turn(turn: TurnExplainInput) -> frozenset[str]:
     raw = turn.features.context.get("known_terms")
     if isinstance(raw, (list, tuple, set, frozenset)):
@@ -381,17 +401,21 @@ def _turn_with_coach_prefs(
     turn: TurnExplainInput,
     *,
     include_score_tips: bool,
+    include_table_tips: bool = False,
     known_terms: Collection[str] | None,
 ) -> TurnExplainInput:
-    """Stamp include_score_tips + known_terms onto features.context."""
+    """Stamp include_score_tips / include_table_tips + known_terms onto features.context."""
     known = normalize_known_terms(known_terms)
     want_score = bool(include_score_tips)
+    want_table = bool(include_table_tips)
     cur_score = bool(turn.features.context.get("include_score_tips"))
+    cur_table = bool(turn.features.context.get("include_table_tips"))
     cur_known = _known_terms_from_turn(turn)
-    if cur_score is want_score and cur_known == known:
+    if cur_score is want_score and cur_table is want_table and cur_known == known:
         return turn
     ctx = dict(turn.features.context)
     ctx["include_score_tips"] = want_score
+    ctx["include_table_tips"] = want_table
     ctx["known_terms"] = sorted(known)
     return turn.model_copy(
         update={"features": turn.features.model_copy(update={"context": ctx})}
@@ -424,6 +448,8 @@ def build_user_payload(turn: TurnExplainInput) -> dict[str, Any]:
     def _display(action: str) -> str:
         if riichi_decision and action.strip() == "none":
             return "Stay silent"
+        if hora_decision and is_hora_decision_action(action):
+            return hora_coach_label(turn)
         if coach_labels:
             return coach_action_label(action)
         return human_action_label(action)
@@ -477,7 +503,7 @@ def build_user_payload(turn: TurnExplainInput) -> dict[str, Any]:
     ):
         hand_metric_glossary.pop("shanten", None)
 
-    return {
+    payload = {
         "player_action": turn.player_action,
         "mortal_best": turn.mortal_best,
         "next_best": next_best,
@@ -488,6 +514,7 @@ def build_user_payload(turn: TurnExplainInput) -> dict[str, Any]:
         "call_decision": call_decision,
         "riichi_decision": riichi_decision,
         "hora_decision": hora_decision,
+        "dama_discard_tenpai": is_tenpai_dama_discard_turn(turn),
         "reach_discard": reach_discard,
         "reach_discard_display": (
             human_tile_label(reach_discard) if reach_discard else None
@@ -546,6 +573,10 @@ def build_user_payload(turn: TurnExplainInput) -> dict[str, Any]:
             human_tile_label(t) for t in _furiten_blocking_tiles(turn)
         ],
     }
+    table_bit = _table_procedure_sentence(turn)
+    if table_bit:
+        payload["table_procedure"] = table_bit
+    return payload
 
 
 def _tile_glossary_for_turn(
@@ -737,6 +768,8 @@ _SHAPE_GLOSS_REDUNDANT_IF: dict[str, str] = {
     "isolated_kanchan": r"closed middle|kanchan",
     "edge wait fragment": r"edge \(penchan\)|penchan",
     "isolated_penchan": r"edge \(penchan\)|penchan",
+    "extra tile on the end of a 5–6–7": r"extra tile on the (?:high|low) end",
+    "sequence_protrusion": r"extra tile on the (?:high|low) end",
 }
 
 
@@ -783,10 +816,12 @@ def _merge_detail_into_summary(summary: str, detail: str | None) -> str:
         probe = chunk[:40].lower()
         if probe in summary_l:
             continue
-        # Don't restate Mortal's pick or echo Hand-stats metrics onto defense tips.
-        if re.search(r"\bmortal['\u2019]?s cut\b", chunk_l) and (
-            has_defense or has_ukeire
-        ):
+        # Don't restate the recommended discard's ukeire contrast onto
+        # defense tips or summaries that already cited improving tiles.
+        if re.search(
+            r"\b(?:mortal['\u2019]?s cut|this discard leaves)\b",
+            chunk_l,
+        ) and (has_defense or has_ukeire):
             continue
         if re.search(
             r"\bis (?:genbutsu|suji|one-chance)\b",
@@ -836,6 +871,16 @@ def _hora_winning_tile(turn: TurnExplainInput) -> str | None:
     return None
 
 
+def hora_coach_label(turn: TurnExplainInput) -> str:
+    """Ron {tile} — take the win / Tsumo — take the win (Majsoul hora buttons)."""
+    if len(turn.game_state.hand) >= 14:
+        return "Tsumo — take the win"
+    tile = _hora_winning_tile(turn)
+    if tile:
+        return f"Ron {human_tile_label(tile)} — take the win"
+    return "Ron — take the win"
+
+
 def build_detail_paragraph(turn: TurnExplainInput) -> str | None:
     """One extra grounded paragraph for the second-click deeper Why? path."""
     bits: list[str] = []
@@ -844,8 +889,8 @@ def build_detail_paragraph(turn: TurnExplainInput) -> str | None:
     alt = turn.features.ukeire_alt
     if alt is not None and ukeire.count != alt.count:
         bits.append(
-            f"Mortal’s cut leaves about {ukeire.count} improving tiles "
-            f"vs about {alt.count} on the alternative"
+            "This discard leaves "
+            + _ukeire_contrast_note_text(turn, ukeire.count, alt.count)
         )
 
     statuses = turn.features.statuses
@@ -907,6 +952,10 @@ def build_detail_paragraph(turn: TurnExplainInput) -> str | None:
                 score_bits.append("late game — few tiles left to draw")
             if score_bits:
                 bits.append("; ".join(score_bits))
+
+    table_bit = _table_procedure_sentence(turn)
+    if table_bit:
+        bits.append(table_bit)
 
     if not bits:
         return None
@@ -1134,25 +1183,22 @@ def _furiten_blocking_tiles(turn: TurnExplainInput) -> list[str]:
 
 
 def _furiten_because_sentence(turn: TurnExplainInput) -> str | None:
-    """Name discarded wait tiles; ron blocked on every wait (tsumo only)."""
+    """Name the wait you already threw; can’t win from a discard."""
     statuses = turn.features.statuses
     if statuses.temporary_furiten and not statuses.furiten:
-        return (
-            "You’re temporarily furiten—you passed on a win this turn—so you "
-            "can’t ron until after your next discard"
-        )
+        return "You passed a win this turn—wait until after your next discard"
     if not statuses.furiten:
         return None
     labels = [human_tile_label(t) for t in _furiten_blocking_tiles(turn)]
     if not labels:
         return (
-            "You’re furiten—you already discarded a wait tile—so you can’t "
-            "win on any discard (only tsumo)"
+            "You already threw a wait tile, so you can’t win from a "
+            "discard—drawing it yourself still works"
         )
     named = labels[0] if len(labels) == 1 else " and ".join(labels)
     return (
-        f"You’re furiten—you already discarded {named}, so you can’t win "
-        "on any discard (only tsumo)"
+        f"You already threw {named}, so you can’t win from a "
+        "discard—drawing it yourself still works"
     )
 
 
@@ -1182,11 +1228,19 @@ def _ensure_cut_shape_notes(turn: TurnExplainInput) -> None:
     cut_raw = _action_tile_token_raw(turn.mortal_best)
     if not cut_raw:
         return
+    alt_raw: str | None = None
+    if turn.diverge and turn.player_action != turn.mortal_best:
+        alt_raw = _action_tile_token_raw(turn.player_action)
+    else:
+        alt = next_best_action(turn)
+        if alt and alt != turn.mortal_best:
+            alt_raw = _action_tile_token_raw(alt)
     notes = infer_hand_shape_notes(
         turn.game_state.hand,
         cut_tile=cut_raw,
         shape_goals=turn.features.shape_goals,
         shanten=turn.features.shanten,
+        alt_tile=alt_raw,
     )
     if notes:
         turn.features.hand_shape_notes = notes
@@ -1222,6 +1276,20 @@ def _tile_supports_shape_goal(
     return base in _yakuhai_value_tiles(turn.features.context)
 
 
+def _penchan_breakup_example(tile: str) -> str:
+    """One-sided vs two-sided picture for a 12 or 89 cut."""
+    n = 0
+    try:
+        base = deaka(normalize_tile(tile))
+        if base and base[0].isdigit():
+            n = int(base[0])
+    except ValueError:
+        pass
+    if n in (8, 9):
+        return "an 8–9 only wants 7; a 5–6 wants 4 or 7"
+    return "a 1–2 only wants 3; a 4–5 wants 3 or 6"
+
+
 def _midhand_shape_clause_from_note(
     turn: TurnExplainInput,
     note: HandShapeNote,
@@ -1250,9 +1318,24 @@ def _midhand_shape_clause_from_note(
     if note.kind == "isolated_kanchan":
         return f"{cut_label} breaks up a closed middle (kanchan) shape"
     if note.kind == "isolated_penchan":
-        return f"{cut_label} breaks up an edge (penchan) shape"
+        return (
+            f"{cut_label} breaks up an edge (penchan) — "
+            f"{_penchan_breakup_example(note.tile)}"
+        )
     if note.kind == "dead_end":
         return f"{cut_label} is a dead-end tile"
+    if note.kind == "sequence_protrusion":
+        keep = note.keep_tile
+        seq = note.sequence
+        end = note.sequence_end
+        if not keep or not seq or end not in ("high", "low"):
+            return None
+        seq_label = seq.replace("-", "–")
+        keep_label = human_tile_label(keep)
+        return (
+            f"{cut_label} is the extra tile on the {end} end of {seq_label}; "
+            f"{keep_label} is part of that sequence"
+        )
     return None
 
 
@@ -1430,6 +1513,118 @@ def _append_chi_meld_to_label(label: str, meld_detail: str | None) -> str:
     if meld_detail.startswith("—"):
         return label + meld_detail
     return f"{label} {meld_detail}"
+
+
+def _resolved_chi_meld(
+    turn: TurnExplainInput, call_action: str
+) -> tuple[str, tuple[str, str, str]] | None:
+    """Single chi sequence when uniquely determined; else None."""
+    if parse_action_kind(call_action) != "chi":
+        return None
+    ctx = turn.features.context or {}
+    call_tile = action_tile_arg(call_action) or ctx.get("call_tile")
+    if not call_tile:
+        return None
+    call_tile = normalize_tile(str(call_tile))
+    melds = enumerate_chi_melds(turn.game_state.hand, call_tile)
+    if not melds:
+        return None
+    consumed_raw = ctx.get("call_consumed")
+    if consumed_raw:
+        consumed_set = frozenset(
+            deaka(normalize_tile(str(t))) for t in consumed_raw
+        )
+        matched = [
+            m for m in melds if _meld_consumed_bases(m, call_tile) == consumed_set
+        ]
+        if len(matched) == 1:
+            return call_tile, matched[0]
+        return None
+    if len(melds) == 1:
+        return call_tile, melds[0]
+    return None
+
+
+def _is_claimed_kan(action: str) -> bool:
+    """True for daiminkan (claim a discard). Skip ankan / kakan / kan_select."""
+    a = action.strip()
+    if a.startswith("ankan") or a.startswith("kakan"):
+        return False
+    return a == "daiminkan" or a.startswith("daiminkan ")
+
+
+def _table_call_tile(turn: TurnExplainInput, action: str) -> str | None:
+    tile = action_tile_arg(action)
+    if tile:
+        return tile
+    raw = turn.features.context.get("call_tile")
+    if raw:
+        return normalize_tile(str(raw))
+    return None
+
+
+def _table_procedure_sentence(turn: TurnExplainInput) -> str | None:
+    """One physical-table placement sentence, or None."""
+    if not _table_tips_enabled(turn):
+        return None
+    best = turn.mortal_best
+    kind = parse_action_kind(best)
+    if kind == "none":
+        return None
+    if kind == "reach":
+        cut = turn.features.context.get("reach_discard")
+        if not cut:
+            return None
+        label = human_tile_label(str(cut))
+        return (
+            f"At a real table, say riichi, put the stick out, and discard "
+            f"{label} sideways as the cut tile"
+        )
+    if kind == "pon":
+        tile = _table_call_tile(turn, best)
+        if not tile:
+            return None
+        label = human_tile_label(tile)
+        return (
+            f"At a real table, take two {label} from your hand and expose them "
+            f"with the claimed {label} turned toward whoever discarded it"
+        )
+    if kind == "chi":
+        resolved = _resolved_chi_meld(turn, best)
+        if resolved is None:
+            return None
+        call_tile, seq = resolved
+        call_d = deaka(call_tile)
+        from_hand = [
+            t for t in seq if deaka(normalize_tile(t)) != call_d
+        ]
+        if len(from_hand) != 2:
+            return None
+        a, b = human_tile_label(from_hand[0]), human_tile_label(from_hand[1])
+        claimed = human_tile_label(call_tile)
+        return (
+            f"At a real table, take {a} and {b} from your hand and lay "
+            f"{chi_meld_label(seq)}, with the claimed {claimed} turned toward "
+            f"your left (chi is only from the player on your left)"
+        )
+    if kind == "kan":
+        if not _is_claimed_kan(best):
+            return None
+        tile = _table_call_tile(turn, best)
+        if not tile:
+            return None
+        label = human_tile_label(tile)
+        return (
+            f"At a real table, take three {label} from your hand and expose "
+            f"all four, with the claimed {label} turned toward whoever discarded it"
+        )
+    return None
+
+
+def _append_table_procedure(sentences: list[str], turn: TurnExplainInput) -> None:
+    bit = _table_procedure_sentence(turn)
+    if bit:
+        sentences.append(bit)
 
 
 def _call_skip_lead(
@@ -1848,6 +2043,7 @@ def _template_explain_call(turn: TurnExplainInput) -> Explanation:
         focus = "defense" if focus == "efficiency" else "mixed"
 
     focus = _append_score_situation(state_sents, focus, turn)
+    _append_table_procedure(state_sents, turn)
 
     summary = _join_summary_paragraphs(
         move_sents,
@@ -1932,6 +2128,7 @@ def _template_explain_riichi(turn: TurnExplainInput) -> Explanation:
         state_sents.append("Few tiles left to draw")
 
     focus = _append_score_situation(state_sents, focus, turn)
+    _append_table_procedure(state_sents, turn)
 
     summary = _join_summary_paragraphs(
         move_sents,
@@ -1950,7 +2147,7 @@ def _template_explain_riichi(turn: TurnExplainInput) -> Explanation:
 
 
 def _template_explain_hora(turn: TurnExplainInput) -> Explanation:
-    """Take the win coach voice for hora / agari."""
+    """Ron / Tsumo — take the win coach voice for hora / agari."""
     best = turn.mortal_best
     player = turn.player_action
     statuses = turn.features.statuses
@@ -1966,7 +2163,7 @@ def _template_explain_hora(turn: TurnExplainInput) -> Explanation:
     elif alt and alt != best:
         contrasted = alt
 
-    label = coach_action_label(best) if is_hora_decision_action(best) else "Take the win"
+    label = hora_coach_label(turn) if is_hora_decision_action(best) else "Take the win"
     if contrasted and contrasted.strip() == "none":
         move_sents.append(f"{label}, don’t skip")
     else:
@@ -2008,12 +2205,14 @@ def template_explain(
     turn: TurnExplainInput,
     *,
     include_score_tips: bool = False,
+    include_table_tips: bool = False,
     known_terms: Collection[str] | None = None,
 ) -> Explanation:
     """Deterministic offline explainer for tests / no API key."""
     turn = _turn_with_coach_prefs(
         turn,
         include_score_tips=include_score_tips,
+        include_table_tips=include_table_tips,
         known_terms=known_terms,
     )
     with using_known_terms(_known_terms_from_turn(turn)):
@@ -2056,6 +2255,9 @@ def _template_explain_body(turn: TurnExplainInput) -> Explanation:
         contrasted = alt
     else:
         move_sents.append(f"Throw {best_tile}")
+
+    if is_tenpai_dama_discard_turn(turn):
+        move_sents.append("Stay silent—don’t declare riichi yet")
 
     contrast_tile = player_tile
     contrast_code = player_code
@@ -2193,12 +2395,14 @@ def explain(
     use_llm: bool | None = None,
     model: str | None = None,
     include_score_tips: bool = False,
+    include_table_tips: bool = False,
     known_terms: Collection[str] | None = None,
 ) -> Explanation:
     """Produce a grounded Explanation. Falls back to template without an API key."""
     turn = _turn_with_coach_prefs(
         turn,
         include_score_tips=include_score_tips,
+        include_table_tips=include_table_tips,
         known_terms=known_terms,
     )
     known = _known_terms_from_turn(turn)
@@ -2218,12 +2422,14 @@ def explain(
                 explanation = template_explain(
                     turn,
                     include_score_tips=include_score_tips,
+                    include_table_tips=include_table_tips,
                     known_terms=known,
                 )
         else:
             explanation = template_explain(
                 turn,
                 include_score_tips=include_score_tips,
+                include_table_tips=include_table_tips,
                 known_terms=known,
             )
 
@@ -2234,6 +2440,7 @@ def explain(
             return template_explain(
                 turn,
                 include_score_tips=include_score_tips,
+                include_table_tips=include_table_tips,
                 known_terms=known,
             )
         return _finalize_explanation(turn, explanation)
@@ -2244,12 +2451,14 @@ def explain_llm(
     *,
     model: str | None = None,
     include_score_tips: bool = False,
+    include_table_tips: bool = False,
     known_terms: Collection[str] | None = None,
 ) -> Explanation:
     """LLM-only explain. Raises if no API key or the call fails — no template fallback."""
     turn = _turn_with_coach_prefs(
         turn,
         include_score_tips=include_score_tips,
+        include_table_tips=include_table_tips,
         known_terms=known_terms,
     )
     with using_known_terms(_known_terms_from_turn(turn)):

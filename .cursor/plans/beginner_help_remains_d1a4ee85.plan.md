@@ -68,6 +68,7 @@ README still says: default 1–2 sentences; optional deeper paragraph behind a s
 | Full push/fold EV, ura, orasu, per-opponent threat | Wrong layer; Mortal already decides; Sensei verbalizes |
 | Tutorial / first-run onboarding | Mostly docs + overlay UX; setup lives in [`docs/live-setup.md`](docs/live-setup.md) |
 | Overlay theme/toolbar polish | Sibling [`shanten-sensei-overlay`](https://github.com/rclarke009/shanten-sensei-overlay) |
+| Real-tile call literacy (which tile, where it goes) | Digital Pon/Chi/Kan is a button; table play needs claimed discard, hand tiles, meld placement. See [`docs/feature-wishlist.md`](docs/feature-wishlist.md) |
 
 ## Recommended next coding slice
 

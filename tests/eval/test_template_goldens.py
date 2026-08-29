@@ -97,11 +97,12 @@ def test_template_wait_gloss_and_furiten_because():
     )
     result = template_explain(turn)
     assert "Throw" in result.summary
+    assert "Stay silent" in result.summary
     assert "ryanmen (two-sided open) wait" in result.summary
-    assert "furiten" in result.summary
     assert "7-sou" in result.summary
-    assert "any discard" in result.summary
-    assert "tsumo" in result.summary.lower()
+    assert "already threw" in result.summary.lower()
+    assert "can’t win from a discard" in result.summary.lower()
+    assert "drawing" in result.summary.lower()
     assert result.focus in ("defense", "mixed")
     payload = build_user_payload(turn)
     assert payload["wait_shape_glossary"]["ryanmen"] == "two-sided open"
@@ -219,6 +220,63 @@ def test_template_floating_terminal_and_isolated_kanchan():
         re.I,
     )
     assert validate_explanation(turn2, result2) == []
+
+
+def test_template_sequence_protrusion():
+    turn = make_turn(
+        mortal_best="dahai 8s",
+        player_action="dahai 5s",
+        diverge=True,
+        ukeire=UkeireInfo(count=14, tiles=["3m", "4p", "5p", "7p"]),
+    )
+    turn.game_state.hand = [
+        "2m", "4m", "8m", "8m",
+        "5p", "6p", "6p", "7p",
+        "5s", "6s", "6s", "7s", "8s", "8s",
+    ]
+    turn.features.hand_shape_notes = [
+        HandShapeNote(
+            kind="sequence_protrusion",
+            tile="8s",
+            keep_tile="5s",
+            sequence="5-6-7",
+            sequence_end="high",
+        )
+    ]
+    turn.features.shanten = 1
+    turn.features.statuses.shanten = 1
+    result = template_explain(turn)
+    assert "8-sou is the extra tile on the high end of 5–6–7" in result.summary
+    assert "5-sou is part of that sequence" in result.summary
+    assert "hand_shape_note" in score_explanation_substance(
+        turn, result.summary
+    ).anchors
+    assert validate_explanation(turn, result) == []
+
+
+def test_template_isolated_penchan_one_sided_example():
+    turn = make_turn(mortal_best="dahai 1m", player_action="dahai 5s", diverge=True)
+    turn.features.hand_shape_notes = [
+        HandShapeNote(kind="isolated_penchan", tile="1m")
+    ]
+    result = template_explain(turn)
+    assert "1-man breaks up an edge (penchan)" in result.summary
+    assert "a 1–2 only wants 3" in result.summary
+    assert "a 4–5 wants 3 or 6" in result.summary
+    assert "hand_shape_note" in score_explanation_substance(
+        turn, result.summary
+    ).anchors
+    assert validate_explanation(turn, result) == []
+
+    turn89 = make_turn(mortal_best="dahai 9p", player_action="dahai 5s", diverge=True)
+    turn89.features.hand_shape_notes = [
+        HandShapeNote(kind="isolated_penchan", tile="9p")
+    ]
+    result89 = template_explain(turn89)
+    assert "9-pin breaks up an edge (penchan)" in result89.summary
+    assert "an 8–9 only wants 7" in result89.summary
+    assert "a 5–6 wants 4 or 7" in result89.summary
+    assert validate_explanation(turn89, result89) == []
 
 
 def test_template_dead_end_is_cut_reason_not_keep():
