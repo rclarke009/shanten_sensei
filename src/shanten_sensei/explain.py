@@ -1209,6 +1209,19 @@ def _note_for_cut(turn: TurnExplainInput, cut_raw: str | None):
     return turn.features.hand_shape_notes[0]
 
 
+def _tile_supports_shape_goal(
+    turn: TurnExplainInput, tile_raw: str, goal: str
+) -> bool:
+    """True when the tile is material for the named goal (not 'outside' it)."""
+    if goal != "yakuhai":
+        return False
+    try:
+        base = deaka(normalize_tile(tile_raw))
+    except ValueError:
+        return False
+    return base in _yakuhai_value_tiles(turn.features.context)
+
+
 def _midhand_shape_clause_from_note(
     turn: TurnExplainInput,
     note: HandShapeNote,
@@ -1226,6 +1239,9 @@ def _midhand_shape_clause_from_note(
         return f"{cut_label} is a floating terminal"
     if note.kind == "floating_honor":
         if primary:
+            if _tile_supports_shape_goal(turn, note.tile, primary):
+                # Singleton dragon / seat wind still counts toward yakuhai.
+                return None
             return (
                 f"{cut_label} is a floating honor outside "
                 f"{_glossed_goal(primary)}"

@@ -12,12 +12,43 @@
 | `tests/test_grounding_fuzz.py` | Seeded fuzz: `template_explain` always validates |
 | `tests/test_ingest_explain.py` | Real log diverges (`fixtures/diverge_NNN/`) |
 
-## Running tests
+## After a major change
+
+From this repo, one command is enough. `uv run pytest` runs **everything** under `tests/` — unit, ingest fixtures (`diverge_001`–`005`), copy-sensitive eval goldens, and grounding fuzz. The `eval` marker is for targeting copy files, not for excluding them (pytest.ini has no `-m "not eval"`). There is no GitHub pytest CI today; this local run is the gate.
 
 ```bash
-uv run pytest              # unit + ingest (default CI)
-uv run pytest -m eval      # copy-sensitive regressions only
-uv run pytest tests/test_grounding_fuzz.py
+uv run pytest
+```
+
+When you only touched Why? copy / glosses:
+
+```bash
+uv run pytest -m eval
+uv run pytest tests/test_explanation_substance.py tests/test_grounding.py \
+  tests/test_riichi_coaching.py tests/test_call_coaching.py tests/test_serve.py \
+  tests/test_glosses.py tests/test_features.py -q
+```
+
+When live discards, Why? cache, or score-tips wiring changed, also run the overlay adapter suite (sibling repo; uses this package):
+
+```bash
+cd ../shanten-sensei-overlay
+# pytest on PATH, or the Sensei venv:
+../shanten_sensei/.venv/bin/python -m pytest \
+  tests/test_sensei_adapter.py tests/test_coach_journal.py -q
+```
+
+Coaching substance map:
+
+| Slice | Tests |
+|-------|--------|
+| Wait gloss + furiten because | `tests/eval/test_template_goldens.py` (`test_template_wait_gloss_and_furiten_because`); `tests/test_glosses.py`; `tests/test_features.py` / `tests/test_live.py` river + reach-cut; overlay `test_build_turn_passes_player_river_for_furiten` |
+| Defense / riichi / score | goldens `test_template_suji_*`, `test_template_genbutsu_*`, `test_template_score_situation_*`; `tests/test_riichi_coaching.py`; danger/score builders in `tests/test_features.py`. Score sentences only when `include_score_tips=True` (default off) |
+| Review parity | `tests/test_serve.py` (`aiming_for`, `wait_shape_label`, `danger_labels`, `furiten_label`, `furiten_blocking_tiles`) |
+| Real-log smoke | `tests/test_ingest_explain.py` over `fixtures/diverge_*/` — ingest + grounding, not copy pins |
+
+```bash
+uv run pytest tests/test_grounding_fuzz.py   # property: template always validates
 ```
 
 ## When a bug appears

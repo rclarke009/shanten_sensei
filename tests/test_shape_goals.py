@@ -446,6 +446,8 @@ def test_template_yakuhai_because_east_pair_not_chun():
     assert "isn’t a value tile" in result.summary or "isn't a value tile" in result.summary
     assert "can still pair" in result.summary
     assert "would not help" not in result.summary
+    # Chun is yakuhai material — never teach it as "outside yakuhai".
+    assert "floating honor outside yakuhai" not in result.summary.lower()
     assert validate_explanation(turn, result) == []
 
 
