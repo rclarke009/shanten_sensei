@@ -18,7 +18,7 @@ Practice / friend / vs-AI only — **not for ranked**. Coaching and Autoplay are
 3. It installs **Shanten Sensei** to Applications and opens the app. The installer checks GitHub for the latest release and re-downloads if your cached `.dmg` is older. Complete the **first-run wizard** (bundled Mortal model, Safari companion, optional API key).
 4. Play Majsoul in **Safari**, join friend / practice / vs-AI, press **Why?** in the coach window.
 
-**Or** use the `.dmg` manually: drag **Shanten Sensei** to Applications (right-click → **Open** if macOS warns about an unsigned build).
+**Or** use the `.dmg` manually: drag **Shanten Sensei** to Applications. If macOS blocks the installer script (not the app), right-click → **Open**.
 
 Full troubleshooting and proxy/cert notes: [overlay INSTALL.md](https://github.com/rclarke009/shanten-sensei-overlay/blob/main/INSTALL.md) and [proxy-trust-precautions.md](proxy-trust-precautions.md).
 

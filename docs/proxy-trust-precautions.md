@@ -33,7 +33,7 @@ The overlay’s mitm CA (under the overlay’s `mitm_config/` folder, typically 
 | Practice-only gate | Ranked/unknown disable coaching and Autoplay (`sensei_mode`); Auto Join is off. Do not market ladder assistance. |
 | Known install source | Users should install only from the official overlay / Sensei repos or known releases. A fake “Sensei” that installs a CA is the realistic spyware vector. |
 
-Code-signing / notarization may come in a later packaging pass; until then, prefer running from source you can inspect.
+Install only from [overlay Releases](https://github.com/rclarke009/shanten-sensei-overlay/releases). Tagged overlay Release `.dmg` builds are Developer ID–signed and notarized in CI; the local MITM cert at first run is a separate trust prompt.
 
 ---
 
