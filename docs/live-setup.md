@@ -5,7 +5,7 @@
 
 Live coaching uses the [overlay fork](https://github.com/rclarke009/shanten-sensei-overlay) (Mahjong Copilot + **Why?**) plus the `shanten-sensei` package (PyPI or sibling clone).
 
-**Practice / friend / vs-AI only — not for ranked.** Why? is disabled when ranked (段位戦) is detected.
+**Practice / friend / vs-AI only — not for ranked.** Coaching (Why?, Mortal HUD, aiming/status) and Autoplay are disabled when ranked (段位戦) or unknown mode is detected. Auto Join is off.
 
 ### Two client paths
 
@@ -77,7 +77,7 @@ python3.11 -m venv venv
 source venv/bin/activate          # Windows: venv\Scripts\activate
 python -m pip install -U pip
 pip install -r requirements.txt
-pip install 'shanten-sensei>=0.1.0'
+pip install 'shanten-sensei>=0.1.2'
 # Or editable sibling for development: pip install -e ../shanten_sensei
 # Compat pins (torch 2.2 + mitmproxy 10.2):
 pip install 'numpy<2' 'httpx>=0.27,<0.28' 'httpcore>=1.0,<1.0.9' 'h11>=0.11,<0.15'
@@ -124,7 +124,7 @@ Confirm **Settings → Model** is `Local` and points at that file. How to obtain
 4. **Join a safe mode**
    - Friend room, or
    - Practice / vs-AI  
-   Avoid ranked ladder. The UI shows a practice-only banner; **Why?** is disabled on ranked / unknown mode.
+   Avoid ranked ladder. The UI shows a practice-only banner; **coaching and Autoplay are disabled** on ranked / unknown mode.
 
 5. **Play your turn**  
    When it’s your discard (or call decision), Mortal’s recommendation appears on the HUD.
@@ -166,8 +166,8 @@ Safari mode is **macOS only**. On other OSes, leave the setting off and use Chro
 | Overlay blank | Overlay toggle on; play inside the app’s browser (Chromium path) |
 | Safari: no Proxy Client / no tips | Safari companion mode on + restart; cert trusted; Majsoul opened in Safari after overlay start; use **Quit Safari & reopen Majsoul** if you opened the game first (closes all Safari tabs); quit/restart if PAC failed |
 | Browsing broken after Safari crash | `networksetup -setautoproxystate "Wi-Fi" off` (see precautions doc) |
-| Why? greyed / “disabled” | You’re in ranked or mode is unknown — use friend / practice |
-| `shanten_sensei` import errors | `pip install 'shanten-sensei>=0.1.0'` inside the overlay venv |
+| Why? greyed / “Coaching disabled” | You’re in ranked or mode is unknown — use friend / practice. Autoplay and live tips are off too. |
+| `shanten_sensei` import errors | `pip install 'shanten-sensei>=0.1.2'` inside the overlay venv |
 | Generic / template Why? text | Put `OPENAI_API_KEY` or `SENSEI_API_KEY` in overlay `.env`, sibling `../shanten_sensei/.env`, or export before `python main.py`. Restart the overlay after changing keys. |
 
 ---

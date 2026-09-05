@@ -30,7 +30,7 @@ The overlay’s mitm CA (under the overlay’s `mitm_config/` folder, typically 
 | Scoped Safari proxy | Safari mode writes a PAC that proxies **Majsoul-related hosts only** (`sensei-majsoul.pac`), not all HTTPS. |
 | Off when done | Overlay disables/restores auto-proxy on quit (`atexit` best-effort). Document manual disable if the app crashes. Never leave Auto Proxy on after coaching. |
 | Companion for Safari | Coach UI stays in the tkinter companion window. No in-page Safari HUD / content script in v1 (limits page-world privilege). |
-| Practice-only gate | Keep ranked Why? disabled (`sensei_mode`); do not market ladder assistance. |
+| Practice-only gate | Ranked/unknown disable coaching and Autoplay (`sensei_mode`); Auto Join is off. Do not market ladder assistance. |
 | Known install source | Users should install only from the official overlay / Sensei repos or known releases. A fake “Sensei” that installs a CA is the realistic spyware vector. |
 
 Code-signing / notarization may come in a later packaging pass; until then, prefer running from source you can inspect.
@@ -130,7 +130,7 @@ networksetup -setautoproxystate "Wi-Fi" off
 |---------|-------------|
 | Unrelated sites break or show cert warnings | Proxy still on? Wrong PAC? Remove proxy, then retest |
 | No tips in companion window | Playing outside the proxied client; mitm/cert not trusted; not in a game lobby |
-| Why? disabled | Ranked or unknown mode — switch to friend/practice |
+| Coaching disabled | Ranked or unknown mode — switch to friend/practice. Autoplay and live tips are off. |
 | You did not install Sensei but a cert appeared | Treat as compromise; remove unknown roots; reinstall OS advice as needed |
 
 ---

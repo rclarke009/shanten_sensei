@@ -11,7 +11,7 @@ Shanten Sensei sits on top of existing open-source Mahjong Soul tooling. It does
 **Not a developer?** Start here:
 
 - **[Install on Mac](docs/install-mac.md)** — download `Install-Shanten-Sensei.zip` from Releases; Safari companion is the default path.
-- [Overlay Releases](https://github.com/rclarke009/shanten-sensei-overlay/releases) — macOS app bundle when published.
+- [Overlay Releases](https://github.com/rclarke009/shanten-sensei-overlay/releases) — macOS app (Safari companion).
 
 Practice / friend / vs-AI only — not for ranked. Developer setup (Terminal, Chromium, two-repo clone): [`docs/live-setup.md`](docs/live-setup.md).
 
@@ -242,7 +242,7 @@ Failure modes to guard in the prompt / post-checks:
 
 - [x] Fork + Sensei adapter + mode gate  
 - [x] Overlay UX: Mortal recommendation + status strip + **Why?**  
-- [x] In-app practice-only banner; Why? disabled on ranked / unknown mode  
+- [x] In-app practice-only banner; coaching and Autoplay disabled on ranked / unknown mode  
 
 ---
 
@@ -293,7 +293,7 @@ Stack expectation: **Python**, comfort calling an LLM API. Protocol and engine w
 Real-time client hooks for Majsoul assistance can violate the game’s terms of service and is bannable in ranked play if detected. This project’s learning stance:
 
 1. **Phase 1** — post-game review only (safest, preferred default).  
-2. **Phase 2** — practice / vs-AI only; never marketed as a ranked win tool.  
+2. **Phase 2** — practice / vs-AI / friend only. Ranked and unknown modes disable coaching (Why?, HUD, aiming) and Autoplay; Auto Join is off. Never marketed as a ranked win tool.  
 3. Prefer teaching understanding over automating optimal play for ladder climbing.
 
 ---
@@ -321,7 +321,7 @@ A beginner can play a practice game, open a review (or press **Why?**), and get 
 
 ## Status
 
-Phase 1 ready (post-game explainer + local review UI). Phase 2 live overlay is in the sibling fork.
+Phase 1 ready (post-game explainer + local review UI). Phase 2 live overlay: download the [Mac app](https://github.com/rclarke009/shanten-sensei-overlay/releases/latest).
 
 - **Feature wishlist:** [`docs/feature-wishlist.md`](docs/feature-wishlist.md)
 - **Live play how-to:** [`docs/live-setup.md`](docs/live-setup.md)

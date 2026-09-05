@@ -9,7 +9,7 @@ Practice / friend / vs-AI only. Not for ranked ladder assistance.
 | [shanten_sensei](../README.md) (this repo) | Explainer library: `turn_from_live` → `explain()` | Apache-2.0 |
 | [shanten-sensei-overlay](https://github.com/rclarke009/shanten-sensei-overlay) | Fork of [MahjongCopilot](https://github.com/latorc/MahjongCopilot): Majsoul MITM → mjai → Mortal → HUD + **Why?** | GPL-3.0 |
 
-Do not merge the GPL overlay into this monorepo. The overlay depends on Sensei via `pip install 'shanten-sensei>=0.1.0'` (PyPI) or editable `pip install -e ../shanten_sensei` for development.
+Do not merge the GPL overlay into this monorepo. The overlay depends on Sensei via `pip install 'shanten-sensei>=0.1.2'` (PyPI) or editable `pip install -e ../shanten_sensei` for development.
 
 **Mac players:** [`install-mac.md`](install-mac.md) — no sibling clone required.
 
@@ -42,13 +42,13 @@ Hook points in the fork:
 
 ## Mode policy
 
-| Signal | Why? |
-|--------|------|
+| Signal | Coaching + Autoplay |
+|--------|---------------------|
 | `meta.category == 1` or `roomId > 0` | Allowed |
-| `meta.category == 2` (段位戦) | Disabled |
+| `meta.category == 2` (段位戦) | Disabled (HUD, Why?, aiming, Autoplay) |
 | Unknown / missing | Restricted (fail closed) |
 
-Always show: *Practice / vs-AI / friend only — not for ranked*.
+Auto Join (ranked lobby queue) is always off. Always show: *Practice / vs-AI / friend only — not for ranked*.
 
 ## Local setup (overlay)
 
@@ -58,7 +58,7 @@ Player-facing steps (install, model, How to play a game): **[`install-mac.md`](i
 cd ../shanten-sensei-overlay
 python3.11 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-pip install 'shanten-sensei>=0.1.0'
+pip install 'shanten-sensei>=0.1.2'
 # Dev: pip install -e ../shanten_sensei
 PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium   # optional if using Safari companion only
 python main.py

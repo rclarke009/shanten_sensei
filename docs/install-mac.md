@@ -2,7 +2,7 @@
 
 **Audience:** players who want live coaching — not developers.
 
-Practice / friend / vs-AI only — **not for ranked**.
+Practice / friend / vs-AI only — **not for ranked**. Coaching and Autoplay are disabled in ranked or unknown mode.
 
 **Defaults:** English overlay UI and the English YoStar Majsoul client. Setup and updates re-apply these; change either in **Settings** if needed.
 
