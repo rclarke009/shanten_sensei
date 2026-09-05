@@ -44,6 +44,7 @@ from shanten_sensei.live import (
     is_riichi_decision_turn,
     is_tenpai_dama_discard_turn,
     next_best_action,
+    next_best_dahai_action,
 )
 from shanten_sensei.grounding import (
     SubstanceScore,
@@ -86,7 +87,7 @@ Never open with "Mortal recommends" or \
 mortal_best. Never write \"Mortal’s cut is …\" or \"Target: …\". Do not restate \
 bare shanten / improving-tile counts unless citing a contrast \
 (\"about N … vs about M if you throw …\") or a scarce-copy fact from \
-wall_note (e.g. \"only 1 copy of red 5-pin is still unseen\").
+wall_note (e.g. \"only 1 copy of red 5-pin is still unseen — you can still draw it\").
 
 For discard tips, lead with \"Throw X\" or \"Throw X, not Y\" using \
 tile_glossary / coach_action labels (e.g. 🀅Hatsu, 🀔5-sou). When \
@@ -161,9 +162,15 @@ named in those notes, e.g. \"North is a dead-end tile\", \
 \"1-man breaks up an edge (penchan) — a 1–2 only wants 3; a 4–5 wants 3 or 6\" / \
 \"8-man breaks up an edge (penchan) — an 8–9 only wants 7; a 5–6 wants 4 or 7\" / \
 \"8-sou is the extra tile on the high end of 5–6–7; 5-sou is part of that sequence\"; \
-never attach dead-end / floating / kanchan / penchan notes to the \
-alternate cut or another hand tile; sequence_protrusion may name keep_tile as \
-\"part of that sequence\" only; never write \"kanchan/penchan/fragment on \
+never write \"{alternate} is a dead-end tile\" / \"is a floating honor\" / \
+\"is a floating terminal\" after \"Throw X, not {alternate}\" — those throw-reasons \
+apply only to the recommended cut; when the alternate is an isolated honor or \
+terminal you are keeping, write \"Don't throw {alternate} just because it's isolated\" \
+(add \"— throwing {best} keeps more draws\" only when the move block does not \
+already say \"keeps draws like\"); kanchan/penchan/sequence_protrusion may name \
+the alternate as breaking a useful shape (\"8-pin breaks up a closed middle\"); \
+never attach cut notes to some other hand tile; sequence_protrusion may name \
+keep_tile as \"part of that sequence\" only; never write \"kanchan/penchan/fragment on \
 {tile}\" — that sounds like a wait; if naming both ends say \"6–8 kanchan\", never \
 \"kanchan on 8-man\"; never say you keep / maintain / preserve a dead-end, \
 floating, or isolated shape; never say \"better to keep it\" / \"keep it for \
@@ -178,7 +185,7 @@ left vs about M if you throw the alternate). Prefer wall_note facts when \
 present, rephrased in the same plain voice — do not paste jargon like \
 \"live acceptances\", \"thinning wall\", \"thin wall\", \"improving tiles are \
 thinning\", or \"left in the wall\". Use copy-specific unseen language instead: \
-\"only 1 copy of {tile} is still unseen\", \"only N× {tile} still unseen\", \
+\"only 1 copy of {tile} is still unseen — you can still draw it\", \"only N× {tile} still unseen\", \
 \"{tile} is already out\", or \"few copies left of tiles you need (…)\". These \
 facts are about remaining unseen copies of improving tiles, not the alternate \
 cut’s acceptance count—never rewrite them as \"N improving tiles if you throw …\". \
@@ -233,6 +240,8 @@ tile on the high end of 5–6–7; 🀔5-sou is part of that sequence.\"
 Example dead-end voice: \"• Throw 🀃North.\\n\\n• 🀃North is a dead-end tile—it connects \
 to nothing useful.\"
 
+Example isolated-keep voice: \"• Throw 🀑2-pin, not 🀂West.\\n• Throwing 🀑2-pin keeps draws like 🀈2-man, 🀋5-man, 🀔2-sou, and 🀗5-sou.\\n\\n• Don't throw 🀂West just because it's isolated.\"
+
 Example yakuhai voice: \"• Throw 🀇1-man, not 🀄Chun.\\n\\n• Throwing 🀇1-man builds toward yakuhai (triplet of \
 dragon or your seat/round wind)—you’re holding a pair of 🀀East for that; 🀇1-man \
 isn’t a value tile, while 🀄Chun can still pair.\"
@@ -262,6 +271,10 @@ already.\\n\\n• An opponent is in riichi—safety matters.\"
 
 Example riichi voice: \"• Declare riichi, discard 🀡9-pin.\\n• You’re tenpai (ready) \
 with a ryanmen (two-sided open) wait.\\n\\n• You have dora (bonus tile) in hand.\"
+
+Example dama voice (closed tenpai, mortal_best is dahai, reach may be next-best): \
+\"• Throw 🀌6-man.\\n• Stay silent—don’t declare riichi yet.\\n\\n• You’re tenpai \
+(ready) with a tanki (single-tile pair) wait.\"
 
 Example hora voice: \"• Ron 🀛2-sou — take the win.\\n• You’re complete (winning hand).\\n\\n• Win on \
 🀛2-sou (tanki (pair)).\\n• You have dora (bonus tile) in hand.\"
@@ -320,7 +333,7 @@ def _unseen_copy_phrase(label: str, copies: int) -> str:
     if copies <= 0:
         return f"{label} is already out"
     if copies == 1:
-        return f"only 1 copy of {label} is still unseen"
+        return f"only 1 copy of {label} is still unseen — you can still draw it"
     return f"only {copies}× {label} still unseen"
 
 
@@ -599,6 +612,22 @@ def _tile_glossary_for_turn(
 
 def _action_display(action: str) -> str:
     return human_action_label(action)
+
+
+def _discard_throw_contrast(turn: TurnExplainInput) -> str | None:
+    """Dahai contrast for Throw X, not Y. Never contrast with reach."""
+    best = turn.mortal_best
+    player = turn.player_action
+    if turn.diverge and player != best:
+        if is_riichi_decision_action(player):
+            return next_best_dahai_action(turn)
+        return player
+    alt = next_best_action(turn)
+    if alt and alt != best:
+        if is_riichi_decision_action(alt):
+            return next_best_dahai_action(turn)
+        return alt
+    return None
 
 
 def _action_tile_token_raw(action: str | None) -> str | None:
@@ -1358,8 +1387,32 @@ def _midhand_shape_clause(
     return _midhand_shape_clause_from_note(turn, note, cut_label)
 
 
+_THROW_REASON_NOTE_KINDS = frozenset(
+    {"dead_end", "floating_honor", "floating_terminal"}
+)
+
+
+def _isolated_keep_sentence(
+    alt_label: str,
+    best_label: str,
+    *,
+    move_sents: list[str] | None = None,
+) -> str:
+    """Why not to dump the isolated runner-up after Throw X, not Y."""
+    short = f"Don't throw {alt_label} just because it's isolated"
+    if move_sents and any("keeps draws like" in s.lower() for s in move_sents):
+        return short
+    best_plain = _label_without_emoji(best_label)
+    return f"{short} — throwing {best_plain} keeps more draws"
+
+
 def _alternate_midhand_shape_clause(
-    turn: TurnExplainInput, contrasted_action: str | None
+    turn: TurnExplainInput,
+    contrasted_action: str | None,
+    *,
+    best_label: str,
+    move_sents: list[str] | None = None,
+    defense_led: bool = False,
 ) -> str | None:
     """Shape teaching for the contrasted (non-Mortal) cut tile."""
     if not contrasted_action:
@@ -1378,6 +1431,17 @@ def _alternate_midhand_shape_clause(
     if note is None:
         return None
     alt_label = human_tile_label(alt_raw)
+    if note.kind in _THROW_REASON_NOTE_KINDS:
+        if note.kind == "floating_honor":
+            goals = [g for g in turn.features.shape_goals if g]
+            primary = goals[0] if goals else None
+            if primary and _tile_supports_shape_goal(turn, note.tile, primary):
+                return None
+        return _isolated_keep_sentence(
+            alt_label, best_label, move_sents=move_sents
+        )
+    if defense_led:
+        return None
     return _midhand_shape_clause_from_note(turn, note, alt_label)
 
 
@@ -1892,13 +1956,7 @@ def _defense_led_for_discard(turn: TurnExplainInput) -> bool:
     best_code = _danger_key(best_raw)
     player_tile = _action_display(player)
     player_code = _danger_key(_action_tile_token_raw(player))
-    alt = next_best_action(turn)
-
-    contrasted: str | None = None
-    if turn.diverge and player != best:
-        contrasted = player
-    elif alt and alt != best:
-        contrasted = alt
+    contrasted = _discard_throw_contrast(turn)
 
     contrast_tile = player_tile
     contrast_code = player_code
@@ -2096,6 +2154,11 @@ def _template_explain_riichi(turn: TurnExplainInput) -> Explanation:
         if contrasted and is_riichi_decision_action(contrasted):
             move_sents[-1] = "Stay silent—don’t declare riichi yet"
         focus = "defense"
+    elif best_kind == "dahai":
+        # Safety net: dahai best belongs on Throw + Stay silent, not Declare.
+        move_sents.append(f"Throw {_action_display(best)}")
+        move_sents.append("Stay silent—don’t declare riichi yet")
+        focus = "defense"
     else:
         reach_discard = turn.features.context.get("reach_discard")
         if reach_discard:
@@ -2146,6 +2209,7 @@ def _template_explain_riichi(turn: TurnExplainInput) -> Explanation:
     summary = _join_summary_paragraphs(
         move_sents,
         state_sents,
+        first_between=".\n" if best_kind == "dahai" else ". ",
         second_between=_state_sentence_join(state_sents),
     )
     return _finalize_explanation(
@@ -2252,22 +2316,18 @@ def _template_explain_body(turn: TurnExplainInput) -> Explanation:
     best_raw = _action_tile_token_raw(best)
     best_code = _danger_key(best_raw)
     player_code = _danger_key(_action_tile_token_raw(player))
-    alt = next_best_action(turn)
-    alt_tile = _action_display(alt) if alt else None
 
     focus: Focus = "efficiency"
     move_sents: list[str] = []
     state_sents: list[str] = []
-    contrasted: str | None = None
+    contrasted = _discard_throw_contrast(turn)
 
-    if turn.diverge and player != best:
-        move_sents.append(f"Throw {best_tile}, not {player_tile}")
-        contrasted = player
-    elif alt and alt != best:
-        move_sents.append(f"Throw {best_tile}, not {alt_tile}")
-        contrasted = alt
+    if contrasted and contrasted != best:
+        contrast_label = _action_display(contrasted)
+        move_sents.append(f"Throw {best_tile}, not {contrast_label}")
     else:
         move_sents.append(f"Throw {best_tile}")
+        contrasted = None
 
     if is_tenpai_dama_discard_turn(turn):
         move_sents.append("Stay silent—don’t declare riichi yet")
@@ -2362,8 +2422,14 @@ def _template_explain_body(turn: TurnExplainInput) -> Explanation:
             ):
                 focus = "value"
 
-    if contrasted and not defense_led:
-        alt_shape_bit = _alternate_midhand_shape_clause(turn, contrasted)
+    if contrasted:
+        alt_shape_bit = _alternate_midhand_shape_clause(
+            turn,
+            contrasted,
+            best_label=best_tile,
+            move_sents=move_sents,
+            defense_led=defense_led,
+        )
         if alt_shape_bit:
             state_sents.append(_sentence_case(alt_shape_bit))
 
@@ -2383,7 +2449,10 @@ def _template_explain_body(turn: TurnExplainInput) -> Explanation:
     focus = _append_score_situation(state_sents, focus, turn)
 
     move_join = (
-        ".\n" if note_kind in ("contrast", "narrow_contrast") else ". "
+        ".\n"
+        if note_kind in ("contrast", "narrow_contrast")
+        or is_tenpai_dama_discard_turn(turn)
+        else ". "
     )
     summary = _join_summary_paragraphs(
         move_sents,

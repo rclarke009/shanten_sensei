@@ -182,8 +182,13 @@ def _is_dora_in_hand_tile(turn: TurnExplainInput, tile_raw: str) -> bool:
         return False
 
 
+_THROW_REASON_NOTE_KINDS = frozenset(
+    {"dead_end", "floating_honor", "floating_terminal"}
+)
+
+
 def _cut_shape_notes_for_turn(turn: TurnExplainInput) -> list:
-    """Mortal-cut notes plus alternate-cut shape note when contrasted."""
+    """Mortal-cut notes plus keep-reason alternate-cut notes when contrasted."""
     from shanten_sensei.features import alternate_cut_shape_note
 
     notes = list(turn.features.hand_shape_notes)
@@ -197,7 +202,10 @@ def _cut_shape_notes_for_turn(turn: TurnExplainInput) -> list:
                 shape_goals=turn.features.shape_goals,
                 shanten=turn.features.shanten,
             )
-            if alt_note is not None:
+            if (
+                alt_note is not None
+                and alt_note.kind not in _THROW_REASON_NOTE_KINDS
+            ):
                 notes.append(alt_note)
     return notes
 
@@ -271,6 +279,10 @@ def _feature_anchors_in_summary(turn: TurnExplainInput, summary_l: str) -> list[
         or re.search(r"\bpart of that sequence\b", summary_l)
     ):
         anchors.append("hand_shape_note")
+
+    if re.search(r"\bjust because it['\u2019]s isolated\b", summary_l):
+        if "hand_shape_note" not in anchors:
+            anchors.append("hand_shape_note")
 
     if turn.features.statuses.dora_in_hand and re.search(r"\bdora\b", summary_l):
         anchors.append("dora")
@@ -356,6 +368,8 @@ def _bare_contrasted_discard_summary(
         "already out",
         "closed middle",
         "penchan",
+        "just because it's isolated",
+        "keeps more draws",
     )
     if any(marker in summary_l for marker in rich_markers):
         return False
@@ -822,6 +836,49 @@ def _false_cut_note_tile_error(
     return None
 
 
+def _alt_throw_reason_as_cut_error(
+    turn: TurnExplainInput,
+    summary_l: str,
+    explanation: Explanation | None = None,
+) -> str | None:
+    """Reject '{alt} is a dead-end/floating…' on the contrasted keep tile."""
+    alts: list[str] = []
+    live = _contrast_alt_action(turn)
+    if live:
+        alts.append(live)
+    if explanation is not None and explanation.contrasted_action:
+        alts.append(explanation.contrasted_action)
+    pin_raw = _action_tile_token_raw(turn.mortal_best)
+    pin_code = None
+    if pin_raw:
+        try:
+            pin_code = deaka(normalize_tile(pin_raw))
+        except ValueError:
+            pin_code = None
+    seen: set[str] = set()
+    for alt_action in alts:
+        if not alt_action or alt_action == turn.mortal_best:
+            continue
+        alt_raw = _action_tile_token_raw(alt_action)
+        if not alt_raw:
+            continue
+        try:
+            alt_code = deaka(normalize_tile(alt_raw))
+        except ValueError:
+            continue
+        if pin_code and alt_code == pin_code:
+            continue
+        if alt_code in seen:
+            continue
+        seen.add(alt_code)
+        for kind, patterns in _CUT_NOTE_TILE_CLAIM_PATTERNS:
+            if kind not in _THROW_REASON_NOTE_KINDS:
+                continue
+            if _tile_claimed_as_cut_note(summary_l, alt_code, patterns):
+                return "alt_throw_reason_as_cut"
+    return None
+
+
 def _dora_keep_dead_end_clash_error(
     turn: TurnExplainInput, summary_l: str
 ) -> str | None:
@@ -981,6 +1038,10 @@ def _rule_call_kind(turn, summary_l, explanation):
     return _call_kind_mismatch_error(turn, summary_l)
 
 
+def _rule_alt_throw_reason(turn, summary_l, explanation):
+    return _alt_throw_reason_as_cut_error(turn, summary_l, explanation)
+
+
 def _rule_dora_keep_dead_end(turn, summary_l, explanation):
     return _dora_keep_dead_end_clash_error(turn, summary_l)
 
@@ -990,6 +1051,7 @@ GROUNDING_RULES: tuple[GroundingRule, ...] = (
     GroundingRule("false_ukeire_contrast", _rule_false_ukeire),
     GroundingRule("false_yakuhai_pair", _rule_false_yakuhai),
     GroundingRule("false_cut_note_tile", _rule_false_cut_note),
+    GroundingRule("alt_throw_reason_as_cut", _rule_alt_throw_reason),
     GroundingRule("dora_keep_dead_end_clash", _rule_dora_keep_dead_end),
     GroundingRule("pinned_cut_keep_contradiction", _rule_pinned_keep),
     GroundingRule("action_lead_polarity_inverted", _rule_action_lead),
@@ -1027,6 +1089,12 @@ def validate_explanation(turn: TurnExplainInput, explanation: Explanation) -> li
         errors.append(
             f"summary does not mention reach discard tile {reach_discard!r}"
         )
+
+    if is_tenpai_dama_discard_turn(turn) and not (
+        re.search(r"\bstay silent\b", summary_l)
+        or re.search(r"don['\u2019]t declare riichi", summary_l)
+    ):
+        errors.append("dama_discard_missing_stay_silent")
 
     # Reject recommending a different dahai tile than mortal_best
     other = _action_tile_token(turn.player_action)

@@ -116,7 +116,8 @@ def test_screenshot_7s_vs_chun_coaching_depth():
     summary_l = result.summary.lower()
     assert "throw" in summary_l and "not" in summary_l
     assert "vs about 31" in summary_l
-    assert "dead-end" in summary_l
+    assert "don't throw" in summary_l and "isolated" in summary_l
+    assert "dead-end" not in summary_l
     assert validate_explanation(turn, result) == []
     score = score_explanation_substance(turn, result.summary)
     assert score.thin is False
@@ -160,5 +161,90 @@ def test_screenshot_chun_vs_west_dora_no_dead_end_on_dora():
     assert "keeping" in summary_l and "dora" in summary_l and "west" in summary_l
     assert "west is a dead-end" not in summary_l
     assert "chun is a dead-end" in summary_l
+    assert validate_explanation(turn, result) == []
+
+
+def test_screenshot_2p_vs_west_isolated_keep():
+    """Screenshot-shaped: Throw 2-pin, not West must not call West a dead-end."""
+    turn = make_turn(
+        diverge=False,
+        mortal_best="dahai 2p",
+        player_action="dahai 2p",
+        dora_in_hand=["4p"],
+        ukeire=UkeireInfo(
+            count=15,
+            tiles=["2m", "5m", "2s", "5s"],
+            remaining_by_tile={"2m": 3, "5m": 3, "2s": 3, "5s": 3},
+        ),
+    )
+    turn.mortal_output.candidates = [
+        MortalCandidate(action="dahai 2p", prob=0.6),
+        MortalCandidate(action="dahai W", prob=0.2),
+    ]
+    turn.game_state.hand = [
+        "2m",
+        "3m",
+        "3m",
+        "4m",
+        "4m",
+        "2p",
+        "2p",
+        "4p",
+        "4p",
+        "3s",
+        "4s",
+        "N",
+        "N",
+        "W",
+    ]
+    result = template_explain(turn)
+    summary_l = result.summary.lower()
+    assert "throw" in summary_l and "2-pin" in summary_l and "not" in summary_l
+    assert "don't throw" in summary_l and "west" in summary_l and "isolated" in summary_l
+    assert "west is a dead-end" not in summary_l
+    assert "keeps draws like" in summary_l
+    assert "— throwing" not in result.summary
+    assert validate_explanation(turn, result) == []
+
+
+def test_screenshot_8s_vs_west_genbutsu_isolated_keep():
+    """Defense-led: genbutsu 8-sou still gets Don't throw West just because isolated."""
+    turn = make_turn(
+        diverge=False,
+        mortal_best="dahai 8s",
+        player_action="dahai 8s",
+        danger={"8s": "genbutsu"},
+        ukeire=UkeireInfo(
+            count=15,
+            tiles=["2m", "5m", "2s", "5s"],
+            remaining_by_tile={"2m": 3, "5m": 3, "2s": 3, "5s": 3},
+        ),
+    )
+    turn.mortal_output.candidates = [
+        MortalCandidate(action="dahai 8s", prob=0.6),
+        MortalCandidate(action="dahai W", prob=0.2),
+    ]
+    turn.game_state.hand = [
+        "2m",
+        "3m",
+        "3m",
+        "4m",
+        "5m",
+        "4p",
+        "4p",
+        "4p",
+        "2s",
+        "3s",
+        "8s",
+        "W",
+        "N",
+        "N",
+    ]
+    result = template_explain(turn)
+    summary_l = result.summary.lower()
+    assert "8-sou" in summary_l
+    assert "don't throw" in summary_l and "west" in summary_l and "isolated" in summary_l
+    assert "west is a dead-end" not in summary_l
+    assert "already discarded" in summary_l or "genbutsu" in summary_l
     assert validate_explanation(turn, result) == []
 

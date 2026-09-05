@@ -407,7 +407,10 @@ def test_template_chiitoi_dora_separate_from_floating_honor_cut():
     assert any("vs about" in line for line in lines)
     assert any("builds toward chiitoi" in line for line in state_lines)
     assert any(
-        "North" in line and "floating honor" in line.lower() for line in state_lines
+        "don't throw" in line.lower()
+        and "North" in line
+        and "isolated" in line.lower()
+        for line in state_lines
     )
     assert validate_explanation(turn, result) == []
 
@@ -638,7 +641,8 @@ def test_template_false_safer_tip_turn_stays_grounded():
     result = template_explain(turn)
     summary_l = result.summary.lower()
     assert "2-pin" in summary_l or "2p" in summary_l
-    assert "still unseen" in summary_l or "already out" in summary_l
+    assert "still unseen" in summary_l
+    assert "you can still draw it" in summary_l
     assert "already discarded" in summary_l
     assert "can't ron" in summary_l or "cant ron" in summary_l
     assert "2-man" in summary_l or "2m" in summary_l

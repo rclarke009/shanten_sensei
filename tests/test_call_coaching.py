@@ -130,7 +130,8 @@ def test_template_skip_includes_unseen_copy_note():
     result = template_explain(turn)
     summary_l = result.summary.lower()
     assert "skip" in summary_l
-    assert "still unseen" in summary_l or "already out" in summary_l
+    assert "still unseen" in summary_l
+    assert "you can still draw it" in summary_l
     assert validate_explanation(turn, result) == []
 
 

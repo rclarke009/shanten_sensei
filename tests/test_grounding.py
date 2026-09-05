@@ -527,7 +527,44 @@ def test_grounding_accepts_narrow_ukeire_contrast():
     assert validate_explanation(turn, good) == []
 
 
-def test_grounding_accepts_alternate_cut_dead_end():
+def test_grounding_rejects_alternate_cut_dead_end():
+    turn = make_turn(
+        mortal_best="dahai 7s",
+        player_action="dahai 7s",
+        diverge=False,
+        ukeire=UkeireInfo(count=33, tiles=["4m"], remaining_by_tile={"4m": 3}),
+        ukeire_alt=UkeireInfo(count=33, tiles=["1p"], remaining_by_tile={"1p": 3}),
+    )
+    turn.mortal_output.candidates = [
+        MortalCandidate(action="dahai 7s", prob=0.79),
+        MortalCandidate(action="dahai C", prob=0.11),
+    ]
+    turn.game_state.hand = [
+        "4m",
+        "7m",
+        "8m",
+        "9m",
+        "9m",
+        "7p",
+        "8p",
+        "9p",
+        "7s",
+        "8s",
+        "9s",
+        "W",
+        "C",
+    ]
+    bad = Explanation(
+        summary="Throw 7-sou, not Chun. Chun is a dead-end tile.",
+        focus="efficiency",
+        pinned_action="dahai 7s",
+        contrasted_action="dahai C",
+    )
+    errors = validate_explanation(turn, bad)
+    assert "alt_throw_reason_as_cut" in errors
+
+
+def test_grounding_accepts_alternate_isolated_keep():
     turn = make_turn(
         mortal_best="dahai 7s",
         player_action="dahai 7s",
@@ -555,7 +592,10 @@ def test_grounding_accepts_alternate_cut_dead_end():
         "C",
     ]
     good = Explanation(
-        summary="Throw 7-sou, not Chun. Chun is a dead-end tile.",
+        summary=(
+            "Throw 7-sou, not Chun. Don't throw Chun just because it's isolated "
+            "— throwing 7-sou keeps more draws."
+        ),
         focus="efficiency",
         pinned_action="dahai 7s",
         contrasted_action="dahai C",
@@ -712,6 +752,19 @@ def _wall_jargon_turn() -> TurnExplainInput:
     )
 
 
+def _alt_chun_keep_turn() -> TurnExplainInput:
+    turn = make_turn(
+        mortal_best="dahai 7s",
+        player_action="dahai 7s",
+    )
+    turn.mortal_output.candidates = [
+        MortalCandidate(action="dahai 7s", prob=0.79),
+        MortalCandidate(action="dahai C", prob=0.11),
+    ]
+    turn.game_state.hand = turn.game_state.hand + ["7s", "C"]
+    return turn
+
+
 def _pinned_keep_west_turn() -> TurnExplainInput:
     turn = make_turn(mortal_best="dahai W", player_action="dahai E")
     turn.features.hand_shape_notes = [HandShapeNote(kind="dead_end", tile="W")]
@@ -719,6 +772,17 @@ def _pinned_keep_west_turn() -> TurnExplainInput:
 
 
 RULE_REJECT_CASES: list[tuple[str, TurnExplainInput, Explanation, str]] = [
+    (
+        "alt_throw_reason_as_cut",
+        _alt_chun_keep_turn(),
+        Explanation(
+            summary="Throw 7-sou, not Chun. Chun is a dead-end tile.",
+            focus="efficiency",
+            pinned_action="dahai 7s",
+            contrasted_action="dahai C",
+        ),
+        "alt_throw_reason_as_cut",
+    ),
     (
         "isolated_shape_on_cut_phrasing",
         _kanchan_cut_turn(),

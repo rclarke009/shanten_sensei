@@ -134,7 +134,8 @@ def test_wall_note_thin_remaining():
     )
     note = wall_note(turn)
     assert note is not None
-    assert "still unseen" in note or "already out" in note
+    assert "still unseen" in note
+    assert "you can still draw it" in note
     assert "4-sou" in note.lower() or "4s" in note
 
 
@@ -173,7 +174,7 @@ def test_depletion_language_anchors_ukeire():
     )
     summary = (
         "Throw 3-pin. Few copies left of tiles you need "
-        "(only 1 copy of 4-sou is still unseen)."
+        "(only 1 copy of 4-sou is still unseen — you can still draw it)."
     )
     score = score_explanation_substance(turn, summary)
     assert score.thin is False
@@ -573,8 +574,10 @@ def test_improving_tiles_preview_when_ukeire_gap_zero():
     ]
     result = template_explain(turn)
     assert "keeps draws like" in result.summary.lower()
-    assert "dead-end" in result.summary.lower()
+    assert "don't throw" in result.summary.lower()
+    assert "isolated" in result.summary.lower()
     assert "chun" in result.summary.lower()
+    assert "dead-end" not in result.summary.lower()
     assert validate_explanation(turn, result) == []
 
 

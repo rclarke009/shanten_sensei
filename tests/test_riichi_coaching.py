@@ -8,6 +8,7 @@ from shanten_sensei.explain import (
 from shanten_sensei.live import (
     candidates_from_meta_options,
     is_riichi_decision_turn,
+    is_tenpai_dama_discard_turn,
     turn_from_live,
 )
 from shanten_sensei.schema import Explanation
@@ -234,6 +235,80 @@ def test_dama_discard_rejects_declare_riichi_polarity():
         contrasted_action="dahai 5m",
     )
     assert "action_lead_polarity_inverted" in validate_explanation(turn, bad)
+
+
+def test_dahai_with_reach_next_best_stays_dama():
+    """Reach as 2nd candidate must not steal riichi template — Stay silent."""
+    hand = [
+        "1m",
+        "1m",
+        "5mr",
+        "6m",
+        "7m",
+        "7m",
+        "2p",
+        "2p",
+        "3p",
+        "3p",
+        "4s",
+        "4s",
+        "7s",
+        "7s",
+    ]
+    turn = turn_from_live(
+        hand=hand,
+        recommended="dahai 6m",
+        candidates=candidates_from_meta_options([("6m", 0.7), ("reach", 0.2)]),
+    )
+    assert not is_riichi_decision_turn(turn)
+    assert is_tenpai_dama_discard_turn(turn)
+    result = template_explain(turn)
+    assert "Throw" in result.summary
+    assert "Stay silent" in result.summary
+    assert "Declare riichi" not in result.summary
+    assert "not reach" not in result.summary.lower()
+    move_lines = [
+        ln.lstrip("• ").strip()
+        for ln in result.summary.split("\n\n")[0].splitlines()
+        if ln.strip()
+    ]
+    assert any(ln.startswith("Throw") for ln in move_lines)
+    assert any(ln.startswith("Stay silent") for ln in move_lines)
+    assert validate_explanation(turn, result) == []
+
+
+def test_dama_throw_only_fails_grounding():
+    hand = [
+        "1m",
+        "1m",
+        "5mr",
+        "6m",
+        "7m",
+        "7m",
+        "2p",
+        "2p",
+        "3p",
+        "3p",
+        "4s",
+        "4s",
+        "7s",
+        "7s",
+    ]
+    turn = turn_from_live(
+        hand=hand,
+        recommended="dahai 6m",
+        candidates=candidates_from_meta_options([("6m", 0.7), ("reach", 0.2)]),
+    )
+    bad = Explanation(
+        summary=(
+            "Throw 6-man. You’re tenpai (ready) with a tanki (single-tile pair) wait."
+        ),
+        focus="efficiency",
+        pinned_action="dahai 6m",
+        contrasted_action="reach",
+    )
+    errors = validate_explanation(turn, bad)
+    assert "dama_discard_missing_stay_silent" in errors
 
 
 def test_table_tips_declare_riichi_cut_tile():

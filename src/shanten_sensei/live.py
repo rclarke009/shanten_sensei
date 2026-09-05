@@ -464,6 +464,21 @@ def next_best_action(turn: TurnExplainInput) -> str | None:
     return None
 
 
+def next_best_dahai_action(turn: TurnExplainInput) -> str | None:
+    """Second-ranked Mortal dahai candidate (skip reach / calls / none)."""
+    best = turn.mortal_best
+    hand = turn.game_state.hand
+    for c in turn.mortal_output.candidates:
+        if c.action == best:
+            continue
+        if not c.action.startswith("dahai "):
+            continue
+        if not dahai_tile_in_hand(c.action, hand):
+            continue
+        return c.action
+    return None
+
+
 def contrasted_dahai_tile(
     *,
     mortal_best: str,
@@ -505,8 +520,9 @@ def is_call_decision_turn(turn: TurnExplainInput) -> bool:
 def is_riichi_decision_turn(turn: TurnExplainInput) -> bool:
     """True when Why? should use Declare riichi / Stay silent voice.
 
-    Reach must be the top pick, the diverge contrast, or the next-best
-    alternative — not merely a low-prob candidate on a discard tip.
+    Reach must be Mortal's top pick, or Mortal picked none versus a reach
+    alternative. A dahai best with reach as next-best is dama (Throw +
+    Stay silent on closed tenpai) — not this template.
     """
     if is_call_decision_turn(turn):
         return False
@@ -514,16 +530,18 @@ def is_riichi_decision_turn(turn: TurnExplainInput) -> bool:
         return False
     if is_riichi_decision_action(turn.mortal_best):
         return True
-    if turn.diverge and is_riichi_decision_action(turn.player_action):
-        return True
-    alt = next_best_action(turn)
-    if alt and is_riichi_decision_action(alt):
-        return True
-    # Stay silent: Mortal picked none while reach is among candidates
-    if turn.mortal_best.strip() == "none" and any(
-        is_riichi_decision_action(c.action) for c in turn.mortal_output.candidates
-    ):
-        return True
+    # Stay silent: Mortal picked none while reach is in the comparison set
+    if turn.mortal_best.strip() == "none":
+        if turn.diverge and is_riichi_decision_action(turn.player_action):
+            return True
+        alt = next_best_action(turn)
+        if alt and is_riichi_decision_action(alt):
+            return True
+        if any(
+            is_riichi_decision_action(c.action)
+            for c in turn.mortal_output.candidates
+        ):
+            return True
     return False
 
 
@@ -532,7 +550,7 @@ def is_tenpai_dama_discard_turn(turn: TurnExplainInput) -> bool:
 
     Mahjong Soul still shows Riichi/Skip, but Mortal's top pick is dahai, so
     Why? stays on Throw and should add Stay silent — not steal the riichi
-    template (that requires reach as best / next-best).
+    template (that requires reach or none as best).
     """
     if is_call_decision_turn(turn):
         return False
