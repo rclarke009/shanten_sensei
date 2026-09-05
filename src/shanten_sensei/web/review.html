@@ -340,6 +340,10 @@
       color: var(--muted);
       font-size: 0.82rem;
     }
+    .terms-group .say {
+      color: var(--accent);
+      font-size: 0.82rem;
+    }
     .why-actions {
       display: flex;
       flex-wrap: wrap;
@@ -1071,8 +1075,10 @@
                 "span",
                 {},
                 item.id,
-                " ",
-                el("span", { className: "gloss" }, `(${item.gloss})`)
+                "  ·  ",
+                el("span", { className: "say" }, item.say || ""),
+                "  ·  ",
+                el("span", { className: "gloss" }, item.gloss)
               )
             )
           );

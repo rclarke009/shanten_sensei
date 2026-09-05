@@ -22,6 +22,7 @@ from shanten_sensei.tiles import (
     deaka,
     enrich_call_action_label,
     enumerate_chi_melds,
+    dahai_tile_in_hand,
     is_call_action,
     is_call_decision_action,
     is_hora_decision_action,
@@ -151,6 +152,7 @@ def unify_call_candidates(
     mortal_best: str,
     *,
     call_tile: str | None = None,
+    hand: list[str] | None = None,
 ) -> list[MortalCandidate]:
     """Enrich bare pon/chi meta codes with the known call tile; drop same-call dupes."""
     out: list[MortalCandidate] = []
@@ -160,6 +162,7 @@ def unify_call_candidates(
             c.action,
             call_tile=call_tile,
             preferred=mortal_best if is_call_action(mortal_best) else None,
+            hand=hand,
         )
         # Bare call still same family as tile-bearing best → collapse to best
         if (
@@ -305,8 +308,13 @@ def turn_from_live(
             normalize_tile(str(t)) for t in context["call_consumed"]
         ]
 
+    mortal_best = enrich_call_action_label(
+        mortal_best,
+        call_tile=resolved_tile,
+        hand=hand_n,
+    )
     cand_models = unify_call_candidates(
-        cand_models, mortal_best, call_tile=resolved_tile
+        cand_models, mortal_best, call_tile=resolved_tile, hand=hand_n
     )
 
     # Ensure recommended is first among candidates when missing
@@ -321,6 +329,7 @@ def turn_from_live(
             player_action,
             call_tile=resolved_tile,
             preferred=mortal_best if is_call_action(mortal_best) else None,
+            hand=hand_n,
         )
     if diverge is None:
         diverge = (not pending) and (player_action != mortal_best)
@@ -347,6 +356,7 @@ def turn_from_live(
         player_action=player_action,
         candidates=cand_models,
         diverge=bool(diverge),
+        hand=hand_n,
     )
 
     feat_context = {
@@ -434,6 +444,7 @@ def turn_from_live(
 def next_best_action(turn: TurnExplainInput) -> str | None:
     """Second-ranked Mortal candidate, if any (for non-diverge contrast)."""
     best = turn.mortal_best
+    hand = turn.game_state.hand
     for c in turn.mortal_output.candidates:
         if c.action == best:
             continue
@@ -447,6 +458,8 @@ def next_best_action(turn: TurnExplainInput) -> str | None:
             )
         ):
             continue
+        if not dahai_tile_in_hand(c.action, hand):
+            continue
         return c.action
     return None
 
@@ -457,12 +470,15 @@ def contrasted_dahai_tile(
     player_action: str,
     candidates: list[MortalCandidate],
     diverge: bool,
+    hand: list[str] | None = None,
 ) -> str | None:
     """Tile for ukeire_alt: player cut on diverge, else next-best dahai candidate."""
     if diverge and player_action.startswith("dahai ") and player_action != mortal_best:
         return normalize_tile(player_action.split(" ", 1)[1])
     for c in candidates:
         if c.action.startswith("dahai ") and c.action != mortal_best:
+            if hand is not None and not dahai_tile_in_hand(c.action, hand):
+                continue
             return normalize_tile(c.action.split(" ", 1)[1])
     return None
 

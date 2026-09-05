@@ -310,7 +310,9 @@ def wait_tiles_if_tenpai(hand: list[str], num_melds: int = 0) -> list[str]:
     return waits
 
 
-def classify_wait_shape(waits: list[str]) -> WaitShape | None:
+def classify_wait_shape(
+    waits: list[str], hand: list[str] | None = None
+) -> WaitShape | None:
     if not waits:
         return None
     if len(waits) == 1:
@@ -326,7 +328,24 @@ def classify_wait_shape(waits: list[str]) -> WaitShape | None:
                 return "kanchan"
             if diff == 1:
                 # could be shanpon of adjacents — treat adjacent honors/suits pair as shanpon
-                return "penchan" if {a % 9, b % 9} & {0, 8} else "shanpon"
+                shape: WaitShape = (
+                    "penchan" if {a % 9, b % 9} & {0, 8} else "shanpon"
+                )
+                if shape == "shanpon":
+                    return _shanpon_or_complex(idxs, hand)
+                return shape
+        return _shanpon_or_complex(idxs, hand)
+    return "complex"
+
+
+def _shanpon_or_complex(
+    wait_idxs: list[int], hand: list[str] | None
+) -> WaitShape:
+    """Shanpon only when both wait tiles are pairs in the closed hand."""
+    if hand is None:
+        return "shanpon"
+    counts = tiles_to_34_array(hand)
+    if all(counts[i] >= 2 for i in wait_idxs):
         return "shanpon"
     return "complex"
 
@@ -1015,7 +1034,7 @@ def extract_features(
     waits = (
         wait_tiles_if_tenpai(shape_hand, num_melds) if shape_shanten == 0 else []
     )
-    wait_shape = classify_wait_shape(waits)
+    wait_shape = classify_wait_shape(waits, shape_hand)
     furiten = (
         bool(at_furiten_hint)
         if at_furiten_hint is not None

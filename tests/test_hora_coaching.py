@@ -173,3 +173,37 @@ def test_hora_suppresses_aiming_for_shape_goals():
     assert payload["shape_goals"] == []
     assert payload["hand_metric_glossary"]["shanten"] == "winning hand"
     assert payload["mortal_best_display"] == "Tsumo — take the win"
+
+
+# 11 closed + Chun pon after tsumo: 123m 567m 88p EEE + Chun
+OPEN_TSUMO_HAND = [
+    "1m",
+    "2m",
+    "3m",
+    "5m",
+    "6m",
+    "7m",
+    "8p",
+    "8p",
+    "E",
+    "E",
+    "E",
+]
+OPEN_TSUMO_CALL = {"type": "pon", "pai": "C", "consumed": ["C", "C"]}
+
+
+def test_hora_coach_label_open_hand_tsumo():
+    """Closed length is 11 after a pon; meld-aware total is 14 → Tsumo, not Ron."""
+    turn = turn_from_live(
+        hand=OPEN_TSUMO_HAND,
+        recommended="hora",
+        candidates=candidates_from_meta_options([("hora", 0.95), ("none", 0.05)]),
+        calls=[OPEN_TSUMO_CALL],
+    )
+    assert len(turn.game_state.hand) == 11
+    assert hora_coach_label(turn) == "Tsumo — take the win"
+    result = template_explain(turn)
+    assert "Tsumo — take the win" in result.summary
+    assert "Ron" not in result.summary
+    assert "waiting on" not in result.summary.lower()
+    assert validate_explanation(turn, result) == []

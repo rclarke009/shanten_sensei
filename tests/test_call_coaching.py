@@ -492,3 +492,51 @@ def test_table_tips_closed_kan_omits_placement():
         }
     )
     assert "table_procedure" not in build_user_payload(stamped)
+
+
+def test_open_hand_call_tip_says_open_not_closed():
+    """Already-called hand must not be coached as 'closed with'."""
+    turn = turn_from_live(
+        hand=["1m", "2m", "3m", "4p", "5p", "6p", "7s", "8s", "W", "W"],
+        recommended="none",
+        candidates=candidates_from_meta_options([("none", 0.9), ("pon", 0.1)]),
+        calls=[{"type": "pon", "pai": "C", "consumed": ["C", "C"]}],
+        call_tile="W",
+        visible_discards={"2": ["W"]},
+    )
+    assert turn.features.statuses.menzen is False
+    result = template_explain(turn)
+    assert "open with" in result.summary.lower()
+    assert "closed with" not in result.summary.lower()
+    assert validate_explanation(turn, result) == []
+
+
+def test_ankan_reaction_keeps_ankan_not_daiminkan():
+    turn = turn_from_live(
+        hand=[
+            "1m", "2m", "3m", "1p", "2p", "3p",
+            "7s", "8s", "9s", "5p", "5p", "5p", "5p", "E",
+        ],
+        recommended={"type": "ankan", "pai": "5p", "consumed": ["5p", "5p", "5p", "5p"]},
+        candidates=candidates_from_meta_options([("kan_select", 0.9), ("none", 0.1)]),
+        call_tile="5p",
+    )
+    assert turn.mortal_best == "ankan 5p"
+
+
+def test_kan_select_singleton_hatsu_does_not_name_tile():
+    """Screenshot-shaped: one Hatsu is not a legal kan tile."""
+    turn = turn_from_live(
+        hand=[
+            "1m", "2m", "3m", "1p", "2p", "3p",
+            "7s", "8s", "9s", "E", "S", "W", "F",
+        ],
+        recommended={"type": "kan_select", "pai": "F"},
+        candidates=candidates_from_meta_options([("kan_select", 0.9), ("none", 0.1)]),
+        call_tile="F",
+    )
+    assert turn.mortal_best == "kan_select"
+    result = template_explain(turn)
+    assert "Call kan on" not in result.summary
+    assert "Call kan" in result.summary
+    assert validate_explanation(turn, result) == []

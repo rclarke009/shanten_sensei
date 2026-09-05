@@ -51,6 +51,12 @@ def test_review_html_groups_tips_under_advanced():
     assert advanced_at < point_at < table_at
 
 
+def test_review_html_terms_show_say():
+    html = (resolve_web_dir() / "review.html").read_text(encoding="utf-8")
+    assert 'className: "say"' in html
+    assert "item.say" in html
+
+
 def test_api_review_list_no_explanations(session_and_server):
     _session, base, _calls = session_and_server
     resp = httpx.get(f"{base}/api/review", timeout=5.0)
@@ -58,6 +64,14 @@ def test_api_review_list_no_explanations(session_and_server):
     data = resp.json()
     assert data["log_id"] == "review_mini"
     assert data["diverge_count"] == 2
+    checklist = data["gloss_checklist"]
+    assert isinstance(checklist, list) and checklist
+    ukeire = next(item for item in checklist if item["id"] == "ukeire")
+    assert ukeire["say"] == "oo-KEH-reh"
+    assert ukeire["gloss"]
+    assert ukeire["group"] == "Metrics"
+    for item in checklist:
+        assert item["say"].strip()
     assert len(data["diverges"]) == 2
     first = data["diverges"][0]
     assert first["index"] == 1

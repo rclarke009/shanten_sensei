@@ -67,6 +67,40 @@ _TERM_ALIASES: dict[str, frozenset[str]] = {
     "acceptances": frozenset({"ukeire", "acceptances"}),
 }
 
+# English respellings for the Terms I know UI only — not used in Why? tips.
+TERM_SAY: dict[str, str] = {
+    "tanyao": "TAHN-yow",
+    "yakuhai": "YAH-koo-high",
+    "honitsu": "HOH-neet-soo",
+    "chinitsu": "CHEE-neet-soo",
+    "toitoi": "TOY-toy",
+    "chiitoi": "CHEE-toy",
+    "pinfu": "PEEN-foo",
+    "ittsu": "EET-soo",
+    "ryanmen": "RYAHN-men",
+    "kanchan": "KAHN-chahn",
+    "penchan": "PEN-chahn",
+    "tanki": "TAHN-kee",
+    "shanpon": "SHAHN-pon",
+    "complex": "KOM-pleks",
+    "genbutsu": "GEN-boot-soo",
+    "suji": "SOO-jee",
+    "one-chance": "WUN-chance",
+    "shanten": "SHAHN-ten",
+    "tenpai": "TEN-pie",
+    "ukeire": "oo-KEH-reh",
+    "acceptances": "ak-SEP-tun-siz",
+    "dora": "DOH-rah",
+    "furiten": "FOO-ree-ten",
+    "temp_furiten": "temp FOO-ree-ten",
+    "floating_terminal": "FLOH-ting TER-mi-nul",
+    "floating_honor": "FLOH-ting ON-er",
+    "isolated_kanchan": "isolated KAHN-chahn",
+    "isolated_penchan": "isolated PEN-chahn",
+    "dead_end": "DED-end",
+    "sequence_protrusion": "SEE-kwens pro-TROO-zhun",
+}
+
 
 @dataclass(frozen=True)
 class GlossChecklistItem:
@@ -75,20 +109,25 @@ class GlossChecklistItem:
     id: str
     group: str
     gloss: str
+    say: str
+
+
+def _check_item(term_id: str, group: str, gloss: str) -> GlossChecklistItem:
+    return GlossChecklistItem(term_id, group, gloss, say=TERM_SAY[term_id])
 
 
 GLOSS_CHECKLIST: tuple[GlossChecklistItem, ...] = (
-    *(GlossChecklistItem(k, "Yaku", v) for k, v in GOAL_GLOSS.items()),
-    *(GlossChecklistItem(k, "Waits", v) for k, v in WAIT_GLOSS.items()),
-    *(GlossChecklistItem(k, "Defense", v) for k, v in DANGER_GLOSS.items()),
-    GlossChecklistItem("shanten", "Metrics", METRIC_GLOSS["shanten"]),
-    GlossChecklistItem("tenpai", "Metrics", METRIC_GLOSS["tenpai"]),
-    GlossChecklistItem("ukeire", "Metrics", METRIC_GLOSS["ukeire"]),
-    GlossChecklistItem("acceptances", "Metrics", METRIC_GLOSS["acceptances"]),
-    GlossChecklistItem("dora", "Metrics", METRIC_GLOSS["dora"]),
-    GlossChecklistItem("furiten", "Status", "can’t win on discard"),
-    GlossChecklistItem("temp_furiten", "Status", "passed a win this turn"),
-    *(GlossChecklistItem(k, "Shape notes", v) for k, v in SHAPE_NOTE_GLOSS.items()),
+    *(_check_item(k, "Yaku", v) for k, v in GOAL_GLOSS.items()),
+    *(_check_item(k, "Waits", v) for k, v in WAIT_GLOSS.items()),
+    *(_check_item(k, "Defense", v) for k, v in DANGER_GLOSS.items()),
+    _check_item("shanten", "Metrics", METRIC_GLOSS["shanten"]),
+    _check_item("tenpai", "Metrics", METRIC_GLOSS["tenpai"]),
+    _check_item("ukeire", "Metrics", METRIC_GLOSS["ukeire"]),
+    _check_item("acceptances", "Metrics", METRIC_GLOSS["acceptances"]),
+    _check_item("dora", "Metrics", METRIC_GLOSS["dora"]),
+    _check_item("furiten", "Status", "can’t win on discard"),
+    _check_item("temp_furiten", "Status", "passed a win this turn"),
+    *(_check_item(k, "Shape notes", v) for k, v in SHAPE_NOTE_GLOSS.items()),
 )
 
 GLOSS_TERM_IDS: frozenset[str] = frozenset(item.id for item in GLOSS_CHECKLIST)

@@ -496,6 +496,7 @@ def test_named_improving_tiles_on_ukeire_contrast():
         MortalCandidate(action="dahai 3m", prob=0.79),
         MortalCandidate(action="dahai 9s", prob=0.11),
     ]
+    turn.game_state.hand = turn.game_state.hand + ["9s"]
     result = template_explain(turn)
     assert "keeps draws like" in result.summary.lower()
     assert "if you threw" in result.summary.lower()
@@ -528,6 +529,7 @@ def test_narrow_ukeire_contrast_gap_two():
         MortalCandidate(action="dahai 7s", prob=0.79),
         MortalCandidate(action="dahai C", prob=0.11),
     ]
+    turn.game_state.hand = turn.game_state.hand + ["7s", "C"]
     result = template_explain(turn)
     assert "vs about 31" in result.summary
     assert "keeps draws like" not in result.summary.lower()

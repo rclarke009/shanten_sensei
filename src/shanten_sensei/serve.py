@@ -144,7 +144,12 @@ class ReviewSession:
             "log_id": self.log_id,
             "diverge_count": len(self.diverges),
             "gloss_checklist": [
-                {"id": item.id, "group": item.group, "gloss": item.gloss}
+                {
+                    "id": item.id,
+                    "group": item.group,
+                    "gloss": item.gloss,
+                    "say": item.say,
+                }
                 for item in GLOSS_CHECKLIST
             ],
             "known_terms": sorted(known),

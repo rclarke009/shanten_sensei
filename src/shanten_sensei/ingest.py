@@ -129,6 +129,7 @@ def turn_from_entry(
         player_action=player_action,
         candidates=candidates,
         diverge=diverge,
+        hand=hand,
     )
 
     features = extract_features(

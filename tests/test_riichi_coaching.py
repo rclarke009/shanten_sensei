@@ -289,3 +289,22 @@ def test_table_tips_stay_silent_omits_placement():
         }
     )
     assert "table_procedure" not in build_user_payload(stamped)
+
+
+def test_riichi_tip_skips_tenpai_wait_when_not_tenpai():
+    """Don't claim ryanmen/tenpai when the calculator says shanten > 0."""
+    turn = turn_from_live(
+        hand=[
+            "4m", "5m", "4p", "4p", "8p", "9p",
+            "3s", "3s", "4s", "5s", "6s", "7s", "9s", "1m",
+        ],
+        recommended="reach",
+        candidates=candidates_from_meta_options([("reach", 0.85), ("none", 0.15)]),
+    )
+    assert is_riichi_decision_turn(turn)
+    assert turn.features.shanten != 0
+    result = template_explain(turn)
+    assert "Declare riichi" in result.summary
+    assert "tenpai" not in result.summary.lower()
+    assert "ryanmen" not in result.summary.lower()
+    assert validate_explanation(turn, result) == []

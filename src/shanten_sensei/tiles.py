@@ -148,6 +148,22 @@ def human_action_label(action: str) -> str:
     return action
 
 
+def hand_tile_count(hand: list[str], tile: str) -> int:
+    """How many copies of tile (aka-aware) are in the closed hand."""
+    want = deaka(normalize_tile(tile))
+    return sum(1 for t in hand if deaka(normalize_tile(t)) == want)
+
+
+def dahai_tile_in_hand(action: str, hand: list[str]) -> bool:
+    """True when action is not a dahai, or its tile is among hand tiles."""
+    if not action.strip().startswith("dahai "):
+        return True
+    tile = action_tile_arg(action)
+    if not tile:
+        return False
+    return hand_tile_count(hand, tile) > 0
+
+
 def parse_action_kind(action: str) -> str:
     """Classify an action label: none / dahai / pon / chi / kan / reach / hora / other."""
     a = action.strip()
@@ -242,8 +258,14 @@ def enrich_call_action_label(
     *,
     call_tile: str | None = None,
     preferred: str | None = None,
+    hand: list[str] | None = None,
 ) -> str:
-    """Attach a known call tile to bare meta codes (pon / chi_mid → pon 3s)."""
+    """Attach a known call tile to bare meta codes (pon / chi_mid → pon 3s).
+
+    Bare ``kan_select`` only becomes a tiled kan when the closed hand holds
+    enough copies (≥4 ankan, ≥3 daiminkan). Never rewrite ankan/kakan to
+    daiminkan.
+    """
     kind = parse_action_kind(action)
     if kind not in ("pon", "chi", "kan"):
         return action
@@ -259,7 +281,19 @@ def enrich_call_action_label(
         return f"pon {tile}"
     if kind == "chi":
         return f"chi {tile}"
-    return f"daiminkan {tile}"
+    a = action.strip()
+    if a.startswith("ankan"):
+        return f"ankan {tile}"
+    if a.startswith("kakan"):
+        return f"kakan {tile}"
+    if a.startswith("daiminkan"):
+        return f"daiminkan {tile}"
+    n = hand_tile_count(hand, tile) if hand else 0
+    if n >= 4:
+        return f"ankan {tile}"
+    if n >= 3:
+        return f"daiminkan {tile}"
+    return action
 
 
 def _tile_rank_suit(tile: str) -> tuple[int, str] | None:

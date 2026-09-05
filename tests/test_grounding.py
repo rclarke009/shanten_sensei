@@ -514,6 +514,7 @@ def test_grounding_accepts_narrow_ukeire_contrast():
         MortalCandidate(action="dahai 7s", prob=0.79),
         MortalCandidate(action="dahai C", prob=0.11),
     ]
+    turn.game_state.hand = turn.game_state.hand + ["7s", "C"]
     good = Explanation(
         summary=(
             "Throw 7-sou, not Chun. That leaves about 33 improving tiles left "

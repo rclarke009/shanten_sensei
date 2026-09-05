@@ -871,9 +871,19 @@ def _hora_winning_tile(turn: TurnExplainInput) -> str | None:
     return None
 
 
+def _hora_tile_total(turn: TurnExplainInput) -> int:
+    """Closed tiles plus 3 per open meld (same accounting as features.hand_total)."""
+    return len(turn.game_state.hand) + 3 * len(turn.game_state.calls or [])
+
+
+def _hora_is_tsumo(turn: TurnExplainInput) -> bool:
+    """True for a 14-tile (self-draw) hora, including open-hand tsumo."""
+    return _hora_tile_total(turn) >= 14
+
+
 def hora_coach_label(turn: TurnExplainInput) -> str:
     """Ron {tile} — take the win / Tsumo — take the win (Majsoul hora buttons)."""
-    if len(turn.game_state.hand) >= 14:
+    if _hora_is_tsumo(turn):
         return "Tsumo — take the win"
     tile = _hora_winning_tile(turn)
     if tile:
@@ -892,7 +902,7 @@ def build_detail_paragraph(turn: TurnExplainInput) -> str | None:
 
     statuses = turn.features.statuses
     if is_hora_decision_turn(turn):
-        if len(turn.game_state.hand) < 14:
+        if not _hora_is_tsumo(turn):
             tile = _hora_winning_tile(turn)
             if tile:
                 labels = human_tile_label(tile)
@@ -908,7 +918,7 @@ def build_detail_paragraph(turn: TurnExplainInput) -> str | None:
                     bits.append(f"Win on {labels} ({wait_label})")
                 else:
                     bits.append(f"Win on {labels}")
-    elif statuses.tenpai and ukeire.tiles:
+    elif statuses.tenpai and turn.features.shanten == 0 and ukeire.tiles:
         labels = ", ".join(human_tile_label(t) for t in ukeire.tiles[:6])
         wait_label = _glossed_wait(statuses.wait_shape)
         if wait_label:
@@ -1954,8 +1964,9 @@ def _template_explain_call(turn: TurnExplainInput) -> Explanation:
 
     # Bundled shanten + improving-tile count stays with the move paragraph.
     if shanten is not None:
+        menzen_word = "closed" if turn.features.statuses.menzen else "open"
         move_sents.append(
-            f"You’re {_glossed_shanten_phrase(shanten)} closed with "
+            f"You’re {_glossed_shanten_phrase(shanten)} {menzen_word} with "
             f"about {ukeire.count} improving tiles"
         )
 
@@ -1998,12 +2009,14 @@ def _template_explain_call(turn: TurnExplainInput) -> Explanation:
         tile = action_tile_arg(best)
         dragons = frozenset({"P", "F", "C"})
         coached_goals = coaching_shape_goals(turn)
+        yakuhai_locked = False
         if parse_action_kind(best) == "pon" and tile and (
             "yakuhai" in coached_goals or tile in dragons
         ):
             state_sents.append(
                 "That locks a yakuhai triplet for a guaranteed yaku when you win"
             )
+            yakuhai_locked = True
             focus = "value"
         if parse_action_kind(best) == "chi" and (
             tradeoff is not None
@@ -2031,7 +2044,9 @@ def _template_explain_call(turn: TurnExplainInput) -> Explanation:
             _gerund_move_subject(move_sents[0]) if move_sents else "Calling"
         )
         shape_sentence = _shape_goal_state_sentence(turn, move_subject)
-        if shape_sentence:
+        if shape_sentence and not (
+            yakuhai_locked and "yakuhai" in shape_sentence.lower()
+        ):
             state_sents.append(shape_sentence)
 
     furiten_bit = _furiten_because_sentence(turn)
@@ -2095,7 +2110,8 @@ def _template_explain_riichi(turn: TurnExplainInput) -> Explanation:
             move_sents.append(label)
 
     # Tenpai + wait stays with the move paragraph; standalone shanten goes to state.
-    if statuses.tenpai or turn.features.shanten == 0:
+    # Don't claim tenpai/wait when the calculator disagrees with Mortal's reach.
+    if turn.features.shanten == 0:
         wait = _glossed_wait(statuses.wait_shape)
         if wait:
             move_sents.append(

@@ -141,3 +141,14 @@ def test_normalize_known_terms_drops_unknown():
     )
     assert "ukeire" in GLOSS_TERM_IDS
     assert any(i.id == "ukeire" for i in GLOSS_CHECKLIST)
+
+
+def test_checklist_pronunciation():
+    by_id = {item.id: item for item in GLOSS_CHECKLIST}
+    for item in GLOSS_CHECKLIST:
+        assert item.say.strip(), f"{item.id} is missing a respelling"
+    assert by_id["ukeire"].say == "oo-KEH-reh"
+    assert by_id["chiitoi"].say == "CHEE-toy"
+    assert by_id["ryanmen"].say == "RYAHN-men"
+    assert by_id["ukeire"].gloss == UKEIRE_GLOSS
+    assert set(by_id) == GLOSS_TERM_IDS

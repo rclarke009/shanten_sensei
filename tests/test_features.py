@@ -348,3 +348,26 @@ def test_short_hand_with_call_has_real_shanten():
     assert feats.shanten < 8
     assert feats.statuses.menzen is False
     assert feats.ukeire.count > 0
+
+
+def test_shanpon_requires_pairs_in_closed_hand():
+    """Two-tile wait is shanpon only when both waits are pairs (not 5p+East)."""
+    # 234m 567p 88p EE + Chun pon → shanpon 8p / East
+    closed = ["2m", "3m", "4m", "5p", "6p", "7p", "8p", "8p", "E", "E"]
+    waits = wait_tiles_if_tenpai(closed, num_melds=1)
+    assert set(waits) == {"8p", "E"}
+    assert "5p" not in waits
+    assert classify_wait_shape(waits, closed) == "shanpon"
+    feats = extract_features(
+        closed,
+        calls=[{"type": "pon", "pai": "C", "consumed": ["C", "C"]}],
+    )
+    assert feats.statuses.tenpai is True
+    assert feats.statuses.wait_shape == "shanpon"
+    assert set(feats.ukeire.tiles) == {"8p", "E"}
+
+
+def test_classify_wait_shape_rejects_shanpon_on_singleton():
+    closed = ["2m", "3m", "4m", "5p", "6p", "7p", "8p", "8p", "E", "E"]
+    assert classify_wait_shape(["5p", "E"], closed) == "complex"
+    assert classify_wait_shape(["5p", "E"]) == "shanpon"

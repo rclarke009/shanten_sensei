@@ -262,3 +262,21 @@ def test_explain_offline_live():
     result = explain(turn, use_llm=False)
     assert result.pinned_action == turn.mortal_best
     assert validate_explanation(turn, result) == []
+
+
+def test_next_best_skips_dahai_not_in_hand():
+    """Screenshot-shaped: don't contrast Haku when it isn't in the hand."""
+    hand = LIVE_HAND[:-1] + ["F"]  # Hatsu instead of 9p; no Haku
+    turn = turn_from_live(
+        hand=hand,
+        recommended="dahai F",
+        candidates=[
+            MortalCandidate(action="dahai F", prob=0.7),
+            MortalCandidate(action="dahai P", prob=0.3),
+        ],
+    )
+    assert next_best_action(turn) is None
+    result = template_explain(turn)
+    assert "Haku" not in result.summary
+    assert ", not " not in result.summary.split("\n")[0]
+    assert validate_explanation(turn, result) == []

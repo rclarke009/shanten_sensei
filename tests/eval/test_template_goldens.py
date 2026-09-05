@@ -170,6 +170,7 @@ def test_template_ukeire_contrast_move_lines_and_state_break():
         MortalCandidate(action="dahai 4m", prob=0.79),
         MortalCandidate(action="dahai 2s", prob=0.11),
     ]
+    turn.game_state.hand = turn.game_state.hand + ["4m", "2s"]
     result = template_explain(turn)
     paras = summary_paragraphs(result.summary)
     move_lines = summary_lines(paras[0])
@@ -434,6 +435,7 @@ def test_template_pinfu_dora_floating_honor_teaching_first():
         MortalCandidate(action="dahai S", prob=0.72),
         MortalCandidate(action="dahai 8p", prob=0.14),
     ]
+    turn.game_state.hand = turn.game_state.hand + ["8p"]
     turn.features.shanten = 2
     turn.features.statuses.shanten = 2
     turn.features.hand_shape_notes = [
